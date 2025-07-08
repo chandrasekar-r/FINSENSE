@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.transactionRoutes = void 0;
+const express_1 = require("express");
+const TransactionController_1 = require("../controllers/TransactionController");
+const auth_1 = require("../middleware/auth");
+const validate_1 = require("../middleware/validate");
+const transactionValidators_1 = require("../validators/transactionValidators");
+const router = (0, express_1.Router)();
+exports.transactionRoutes = router;
+const transactionController = new TransactionController_1.TransactionController();
+router.use(auth_1.authenticate);
+router.get('/', (req, res, next) => transactionController.getTransactions(req, res, next));
+router.post('/', (0, validate_1.validate)(transactionValidators_1.createTransactionSchema), (req, res, next) => transactionController.createTransaction(req, res, next));
+router.get('/:id', (req, res, next) => transactionController.getTransaction(req, res, next));
+router.put('/:id', (0, validate_1.validate)(transactionValidators_1.updateTransactionSchema), (req, res, next) => transactionController.updateTransaction(req, res, next));
+router.delete('/:id', (req, res, next) => transactionController.deleteTransaction(req, res, next));
+router.get('/summary/spending', (req, res, next) => transactionController.getSpendingSummary(req, res, next));
+router.get('/summary/categories', (req, res, next) => transactionController.getCategorySummary(req, res, next));
+//# sourceMappingURL=transactionRoutes.js.map
