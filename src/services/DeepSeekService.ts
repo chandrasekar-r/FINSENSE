@@ -214,7 +214,7 @@ IMPORTANT: When users ask about specific items they bought, individual receipt d
 
 IMPORTANT: When updating budgets, you must provide at least one meaningful update field (name, amount, currency, or alert_threshold). Do not call update_budget with only identification fields like budget_name or category_name.
 
-IMPORTANT: For structured data like budget breakdowns, spending analysis, comparisons, and receipt items, format your response as JSON with the following structure:
+IMPORTANT: For structured data like budget breakdowns, spending analysis, comparisons, receipt items, and transaction lists, format your response as JSON with the following structure:
 {
   "type": "structured_response",
   "content": {
@@ -271,6 +271,20 @@ For receipt items, use:
       "items": [
         {"name": "KAESE SALAMI EUR STICK", "amount": 1.89, "quantity": 1, "category": "groceries"},
         {"name": "BERGKAESE SCH", "amount": 2.99, "quantity": 1, "category": "groceries"}
+      ]
+    }
+  }
+}
+
+For transaction lists, use:
+{
+  "type": "transaction_list",
+  "content": {
+    "message": "Your recent transactions",
+    "data": {
+      "transactions": [
+        {"amount": 3, "description": "carrot cake", "category": "food", "date": "2025-07-08", "merchant": "carrot cake"},
+        {"amount": 2.55, "description": "dm-drogerie markt", "category": "retail", "date": "2025-07-07", "merchant": "dm-drogerie markt"}
       ]
     }
   }
@@ -619,6 +633,7 @@ Receipt: ${extractedText}`;
     try {
       console.log('DeepSeek: Making streaming API request with tool results');
       console.log('DeepSeek: Tool results being sent:', JSON.stringify(toolResults, null, 2));
+      console.log('DeepSeek: Starting streaming response...');
 
       const messages = [
         { role: 'system', content: systemPrompt },

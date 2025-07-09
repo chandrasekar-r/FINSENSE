@@ -60,6 +60,13 @@ export const ChatPage: React.FC = () => {
       recommendations.push("Update transaction categories")
     }
     
+    // Receipt-related recommendations
+    if (message.includes('receipt') || message.includes('items') || response.includes('receipt')) {
+      recommendations.push("Show me receipt items from another purchase")
+      recommendations.push("Update incorrect receipt items")
+      recommendations.push("Show me recent receipts")
+    }
+    
     // Add general recommendations if we don't have enough specific ones
     if (recommendations.length < 3) {
       const general = [
@@ -371,14 +378,15 @@ export const ChatPage: React.FC = () => {
       if (line.startsWith('#')) {
         const headerLevel = line.match(/^#+/)?.[0].length || 1;
         const headerText = line.replace(/^#+\s*/, '');
-        const headerClass = {
+        const headerClasses: Record<number, string> = {
           1: 'text-2xl font-bold text-gray-900 dark:text-white mb-3 mt-4 first:mt-0',
           2: 'text-xl font-bold text-gray-900 dark:text-white mb-2 mt-3 first:mt-0',
           3: 'text-lg font-semibold text-gray-900 dark:text-white mb-2 mt-3 first:mt-0',
           4: 'text-base font-semibold text-gray-900 dark:text-white mb-2 mt-2 first:mt-0',
           5: 'text-sm font-semibold text-gray-900 dark:text-white mb-1 mt-2 first:mt-0',
           6: 'text-xs font-semibold text-gray-900 dark:text-white mb-1 mt-2 first:mt-0'
-        }[headerLevel] || headerClass[4];
+        };
+        const headerClass = headerClasses[headerLevel] || headerClasses[4];
         
         elements.push(
           React.createElement(`h${Math.min(headerLevel, 6)}`, {
@@ -463,6 +471,10 @@ export const ChatPage: React.FC = () => {
         return renderBudgetBreakdown(content);
       case 'spending_analysis':
         return renderSpendingAnalysis(content);
+      case 'receipt_details':
+        return renderReceiptDetails(content);
+      case 'transaction_list':
+        return renderTransactionList(content);
       case 'structured_response':
         return renderGenericStructuredResponse(content);
       default:
@@ -613,6 +625,128 @@ export const ChatPage: React.FC = () => {
               <span>{currency} {total_spent}</span>
             </div>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderReceiptDetails = (content: any) => {
+    const { message, data } = content;
+    const { merchant, date, total_amount, currency, items } = data;
+    
+    return (
+      <div className="space-y-4">
+        {message && (
+          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+            {message}
+          </p>
+        )}
+        
+        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+          <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-3 flex items-center">
+            <span className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center text-white text-sm mr-2">🧾</span>
+            Receipt from {merchant} - {new Date(date).toLocaleDateString()}
+          </h4>
+          
+          <div className="space-y-2 mb-4">
+            {items && items.map((item: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-purple-100 dark:border-purple-800">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900 dark:text-white">
+                    {item.name}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+                    {item.quantity && (
+                      <span>Qty: {item.quantity}</span>
+                    )}
+                    {item.category && (
+                      <>
+                        <span>•</span>
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                          {item.category}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-semibold text-purple-600 dark:text-purple-400">
+                    {currency} {typeof item.amount === 'number' ? item.amount.toFixed(2) : item.amount}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="pt-3 border-t border-purple-200 dark:border-purple-700">
+            <div className="flex justify-between items-center font-semibold text-purple-900 dark:text-purple-100">
+              <span>Total:</span>
+              <span className="text-lg">
+                {currency} {typeof total_amount === 'number' ? total_amount.toFixed(2) : total_amount}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTransactionList = (content: any) => {
+    const { message, data } = content;
+    const { transactions } = data;
+    
+    return (
+      <div className="space-y-4">
+        {message && (
+          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+            {message}
+          </p>
+        )}
+        
+        <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+          <h4 className="font-semibold text-orange-900 dark:text-orange-100 mb-3 flex items-center">
+            <span className="w-6 h-6 bg-orange-600 rounded-full flex items-center justify-center text-white text-sm mr-2">💳</span>
+            Recent Transactions
+          </h4>
+          
+          <div className="space-y-2">
+            {transactions && transactions.map((transaction: any, index: number) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-orange-100 dark:border-orange-800">
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900 dark:text-white">
+                    {transaction.description}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+                    <span>{new Date(transaction.date).toLocaleDateString()}</span>
+                    <span>•</span>
+                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                      {transaction.category}
+                    </span>
+                    {transaction.merchant && transaction.merchant !== transaction.description && (
+                      <>
+                        <span>•</span>
+                        <span className="text-gray-500 dark:text-gray-400">{transaction.merchant}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-semibold text-orange-600 dark:text-orange-400">
+                    -{typeof transaction.amount === 'number' ? transaction.amount.toFixed(2) : transaction.amount}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {transactions && transactions.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-orange-200 dark:border-orange-700">
+              <div className="flex justify-between items-center text-sm text-orange-800 dark:text-orange-200">
+                <span>Total transactions:</span>
+                <span className="font-medium">{transactions.length}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
