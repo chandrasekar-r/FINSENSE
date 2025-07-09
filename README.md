@@ -1,5 +1,17 @@
 # FinSense - AI-Powered Personal Finance Management
 
+## 🎬 Product Demo
+
+Experience FinSense in action! Watch the demo video below to see how AI-powered receipt scanning, conversational chat, and financial insights work together to simplify your personal finance management.
+
+**Demo Video:**
+
+[![FinSense Demo Video](https://user-images.githubusercontent.com/placeholder/demo-thumbnail.png)](./FinSense%20-%20SD%20480p.mov)
+
+- [Download/Watch: FinSense - SD 480p.mov](./FinSense%20-%20SD%20480p.mov)
+
+> _If the video does not play in your browser, right-click the link above and choose "Download Linked File As..." to save and view locally._
+
 FinSense is an intelligent, web-first expense and bill tracking application that transforms how users manage their personal finances. By leveraging AI-powered optical character recognition (OCR) and a natural language interface, FinSense eliminates the tedious manual entry of expenses and provides intelligent insights into spending patterns.
 
 ## ✨ Features
