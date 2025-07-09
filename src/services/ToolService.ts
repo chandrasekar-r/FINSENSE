@@ -139,7 +139,7 @@ export class ToolService {
       },
       {
         name: 'get_transactions',
-        description: 'Get transactions with optional filters. Use this to find transactions first, then use get_receipt_items to see detailed items from receipts.',
+        description: 'Get transactions with optional filters. IMPORTANT: When users ask about receipt details, use this to find transactions first, then IMMEDIATELY use get_receipt_items with the transaction_id to show detailed receipt items.',
         parameters: {
           type: 'object',
           properties: {
@@ -196,7 +196,7 @@ export class ToolService {
       },
       {
         name: 'get_receipt_items',
-        description: 'Get detailed individual items from a scanned receipt. Use this when users ask about specific items they bought, what was on their receipt, individual product details, or want to see an itemized breakdown of their purchase. This shows each item name, price, quantity, and category from receipts.',
+        description: 'MANDATORY: Get detailed individual items from a scanned receipt. ALWAYS use this tool when users ask about: specific items they bought, what was on their receipt, individual product details, itemized breakdown of purchases, or "show me the detailed receipt". This shows each item name, price, quantity, and category from receipts. Use the transaction_id from get_transactions results.',
         parameters: {
           type: 'object',
           properties: {
@@ -578,6 +578,9 @@ export class ToolService {
           message: 'Receipt not found'
         };
       }
+      
+      console.log('🔍 [ToolService] Retrieved receipt:', JSON.stringify(receipt, null, 2));
+      console.log('🔍 [ToolService] Receipt parsed_data:', JSON.stringify(receipt.parsed_data, null, 2));
       
       const items = receipt.parsed_data?.items || [];
       

@@ -9,12 +9,53 @@ export const ChatPage: React.FC = () => {
   const [showClearModal, setShowClearModal] = useState(false)
   const [streamingResponse, setStreamingResponse] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingPhase, setStreamingPhase] = useState<'thinking' | 'searching' | 'analyzing' | 'responding'>('thinking')
   const [recommendations, setRecommendations] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const cleanupStreamRef = useRef<(() => void) | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const detectStreamingPhase = (content: string) => {
+    if (content.includes('🔍 Looking up')) {
+      return 'searching'
+    } else if (content.includes('✅ Found')) {
+      return 'searching'
+    } else if (content.includes('📊 Analyzing')) {
+      return 'analyzing'
+    } else if (content.includes('{') || content.includes('"type"')) {
+      return 'responding'
+    }
+    return 'thinking'
+  }
+
+  const getStreamingIndicator = () => {
+    const indicators = {
+      thinking: {
+        icon: '🤔',
+        text: 'AI is thinking...',
+        color: 'text-gray-500 dark:text-gray-400'
+      },
+      searching: {
+        icon: '🔍',
+        text: 'Searching your data...',
+        color: 'text-blue-500 dark:text-blue-400'
+      },
+      analyzing: {
+        icon: '📊',
+        text: 'Analyzing and formatting...',
+        color: 'text-purple-500 dark:text-purple-400'
+      },
+      responding: {
+        icon: '✨',
+        text: 'Generating response...',
+        color: 'text-green-500 dark:text-green-400'
+      }
+    }
+    
+    return indicators[streamingPhase]
   }
 
   const getInitialRecommendations = () => [
@@ -94,6 +135,7 @@ export const ChatPage: React.FC = () => {
     setError(null)
     setIsStreaming(true)
     setStreamingResponse('')
+    setStreamingPhase('thinking')
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -110,12 +152,17 @@ export const ChatPage: React.FC = () => {
       recommendation,
       // onChunk
       (chunk: string) => {
-        setStreamingResponse(prev => prev + chunk)
+        setStreamingResponse(prev => {
+          const newResponse = prev + chunk
+          setStreamingPhase(detectStreamingPhase(newResponse))
+          return newResponse
+        })
       },
       // onComplete
       (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
+        setStreamingPhase('thinking')
         
         // Update with complete response
         setMessages(prev => [
@@ -138,6 +185,7 @@ export const ChatPage: React.FC = () => {
       (errorMessage: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
+        setStreamingPhase('thinking')
         setError(errorMessage)
         
         // Remove the temp message on error
@@ -195,6 +243,7 @@ export const ChatPage: React.FC = () => {
     setError(null)
     setIsStreaming(true)
     setStreamingResponse('')
+    setStreamingPhase('thinking')
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -211,12 +260,17 @@ export const ChatPage: React.FC = () => {
       userMessage,
       // onChunk
       (chunk: string) => {
-        setStreamingResponse(prev => prev + chunk)
+        setStreamingResponse(prev => {
+          const newResponse = prev + chunk
+          setStreamingPhase(detectStreamingPhase(newResponse))
+          return newResponse
+        })
       },
       // onComplete
       (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
+        setStreamingPhase('thinking')
         
         // Update with complete response
         setMessages(prev => [
@@ -239,6 +293,7 @@ export const ChatPage: React.FC = () => {
       (errorMessage: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
+        setStreamingPhase('thinking')
         setError(errorMessage)
         
         // Remove the temp message on error
@@ -280,7 +335,7 @@ export const ChatPage: React.FC = () => {
     // Check if the response contains JSON structured data
     try {
       // First, try to find JSON-like structure in the text
-      const jsonStart = text.indexOf('{');
+      const jsonStart = text.indexOf('{"type":');
       if (jsonStart !== -1) {
         // Extract potential JSON from the first opening brace to the end
         const potentialJson = text.substring(jsonStart);
@@ -305,7 +360,25 @@ export const ChatPage: React.FC = () => {
           const jsonString = potentialJson.substring(0, endIndex + 1);
           const jsonResponse = JSON.parse(jsonString);
           if (jsonResponse.type && jsonResponse.content) {
-            return renderStructuredResponse(jsonResponse);
+            // Split the response into parts: before JSON, JSON, and after JSON
+            const beforeJson = text.substring(0, jsonStart).trim();
+            const afterJson = text.substring(jsonStart + endIndex + 1).trim();
+            
+            return (
+              <div className="space-y-4">
+                {beforeJson && (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {formatInlineText(beforeJson)}
+                  </div>
+                )}
+                {renderStructuredResponse(jsonResponse)}
+                {afterJson && (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    {formatInlineText(afterJson)}
+                  </div>
+                )}
+              </div>
+            );
           }
         }
       }
@@ -468,6 +541,7 @@ export const ChatPage: React.FC = () => {
     
     switch (type) {
       case 'budget_breakdown':
+      case 'budget_performance':
         return renderBudgetBreakdown(content);
       case 'spending_analysis':
         return renderSpendingAnalysis(content);
@@ -485,7 +559,7 @@ export const ChatPage: React.FC = () => {
 
   const renderBudgetBreakdown = (content: any) => {
     const { message, data } = content;
-    const { total_spent, currency, budgets } = data;
+    const { total_spent, total_budgeted, remaining_budget, currency, budgets, overall_status } = data;
     
     return (
       <div className="space-y-4">
@@ -495,10 +569,55 @@ export const ChatPage: React.FC = () => {
           </p>
         )}
         
+        {/* Overall Performance Summary (for budget_performance type) */}
+        {total_budgeted !== undefined && (
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
+              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">€</span>
+              Overall Budget Performance
+            </h4>
+            
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {currency || 'EUR'} {total_budgeted}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Total Budget</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  {currency || 'EUR'} {total_spent}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Total Spent</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {currency || 'EUR'} {remaining_budget}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Remaining</div>
+              </div>
+            </div>
+            
+            {overall_status && (
+              <div className="mt-3 text-center">
+                <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${
+                  overall_status === 'on_track' 
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                    : overall_status === 'warning'
+                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                }`}>
+                  {overall_status.replace('_', ' ').toUpperCase()}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
           <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
             <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">€</span>
-            Budget Performance Overview
+            Budget Details
           </h4>
           
           <div className="space-y-3">
@@ -947,12 +1066,28 @@ export const ChatPage: React.FC = () => {
               ))}
 
               {/* Streaming Response */}
-              {isStreaming && streamingResponse && (
+              {isStreaming && (
                 <div className="flex justify-start">
                   <div className="max-w-3xl bg-white dark:bg-gray-800 rounded-lg px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700">
                     <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {formatMessage(streamingResponse)}
-                      <span className="inline-block w-2 h-4 bg-blue-500 dark:bg-blue-400 ml-1 animate-pulse rounded"></span>
+                      {streamingResponse ? (
+                        <>
+                          {formatMessage(streamingResponse)}
+                          <span className="inline-block w-2 h-4 bg-blue-500 dark:bg-blue-400 ml-1 animate-pulse rounded"></span>
+                        </>
+                      ) : (
+                        <div className="flex items-center space-x-3">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          </div>
+                          <span className={`flex items-center space-x-2 ${getStreamingIndicator().color}`}>
+                            <span>{getStreamingIndicator().icon}</span>
+                            <span>{getStreamingIndicator().text}</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

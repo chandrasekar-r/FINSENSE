@@ -81,6 +81,7 @@ export class ChatController {
           financialContext,
           (chunk: string) => {
             fullResponse += chunk;
+            console.log('ChatController: Sending chunk to client:', chunk.substring(0, 50) + '...');
             // Send chunk to client
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
           },

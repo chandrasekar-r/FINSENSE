@@ -116,10 +116,18 @@ You can help the user by:
 
 When the user asks you to make changes (add transactions, create budgets, etc.), use the appropriate function calls to execute these actions.
 
-IMPORTANT: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
-1. First use get_transactions to find the relevant transaction
-2. Then use get_receipt_items with the transaction_id to show the detailed itemized breakdown
-3. Return the data in JSON format for frontend processing
+CRITICAL WORKFLOW: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
+1. ALWAYS use get_transactions to find the relevant transaction first
+2. IMMEDIATELY after finding the transaction, you MUST use get_receipt_items with the transaction_id to show the detailed itemized breakdown
+3. NEVER respond about receipts without calling get_receipt_items - if you find a transaction, there may be receipt details available
+4. Return the data in JSON format using the receipt_details type for frontend processing
+5. If get_receipt_items returns no items, then and only then say no receipt details are available
+
+EXAMPLE WORKFLOW:
+- User asks: "show me the detailed receipt for REWE on July 5"
+- Step 1: Call get_transactions with filters for REWE and July 5
+- Step 2: Take the transaction_id from the result and IMMEDIATELY call get_receipt_items with that transaction_id
+- Step 3: Format the response as receipt_details JSON type
 
 IMPORTANT: When creating budgets:
 1. Always use the currency specified by the user (e.g., EUR, USD)
@@ -207,10 +215,18 @@ You can help the user by:
 
 When the user asks you to make changes (add transactions, create budgets, etc.), you MUST use the appropriate function calls to execute these actions. Do not just describe what you would do.
 
-IMPORTANT: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
-1. First use get_transactions to find the relevant transaction
-2. Then use get_receipt_items with the transaction_id to show the detailed itemized breakdown
-3. Return the data in JSON format for frontend processing
+CRITICAL WORKFLOW: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
+1. ALWAYS use get_transactions to find the relevant transaction first
+2. IMMEDIATELY after finding the transaction, you MUST use get_receipt_items with the transaction_id to show the detailed itemized breakdown
+3. NEVER respond about receipts without calling get_receipt_items - if you find a transaction, there may be receipt details available
+4. Return the data in JSON format using the receipt_details type for frontend processing
+5. If get_receipt_items returns no items, then and only then say no receipt details are available
+
+EXAMPLE WORKFLOW:
+- User asks: "show me the detailed receipt for REWE on July 5"
+- Step 1: Call get_transactions with filters for REWE and July 5
+- Step 2: Take the transaction_id from the result and IMMEDIATELY call get_receipt_items with that transaction_id
+- Step 3: Format the response as receipt_details JSON type
 
 IMPORTANT: When updating budgets, you must provide at least one meaningful update field (name, amount, currency, or alert_threshold). Do not call update_budget with only identification fields like budget_name or category_name.
 
@@ -596,16 +612,27 @@ Receipt: ${extractedText}`;
       if (userId && initialResponse.tool_calls && initialResponse.tool_calls.length > 0 && toolService) {
         console.log('DeepSeek: Executing tools:', initialResponse.tool_calls);
         
+        // Send immediate feedback to user about tool execution
+        onChunk('🔍 Looking up your data...\n\n');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const toolResults = [];
         for (const toolCall of initialResponse.tool_calls) {
+          console.log(`DeepSeek: Executing tool: ${toolCall.function.name}`);
+          
           const result = await toolService.executeTool(
             toolCall.function.name,
             JSON.parse(toolCall.function.arguments),
             userId
           );
           toolResults.push({ name: toolCall.function.name, result });
+          
+          onChunk(`✅ Found your ${toolCall.function.name.replace('get_', '').replace('_', ' ')} data\n\n`);
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
 
+        onChunk('📊 Analyzing and formatting your data...\n\n');
+        await new Promise(resolve => setTimeout(resolve, 100));
         await this.makeAPIRequestWithToolResultsStreamFixed(systemPrompt, userMessage, initialResponse.content, toolResults, onChunk, history);
       
       } else {
@@ -674,11 +701,15 @@ Receipt: ${extractedText}`;
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
-            if (data === '[DONE]') return;
+            if (data === '[DONE]') {
+              console.log('DeepSeek: Stream completed');
+              return;
+            }
             try {
               const parsed = JSON.parse(data);
               const content = parsed.choices[0]?.delta?.content;
               if (content) {
+                console.log('DeepSeek: Streaming chunk:', content.substring(0, 50) + '...');
                 onChunk(content);
               }
             } catch (e) {
@@ -689,8 +720,14 @@ Receipt: ${extractedText}`;
       });
 
       return new Promise<void>((resolve, reject) => {
-        stream.on('end', resolve);
-        stream.on('error', reject);
+        stream.on('end', () => {
+          console.log('DeepSeek: Stream ended');
+          resolve();
+        });
+        stream.on('error', (error) => {
+          console.log('DeepSeek: Stream error:', error);
+          reject(error);
+        });
       });
     } catch (error) {
       console.error('DeepSeek: Streaming request with tool results failed:', error);
