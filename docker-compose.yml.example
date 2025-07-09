@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: finsense
+      POSTGRES_USER: finsense_user
+      POSTGRES_PASSWORD: finsense_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finsense_user -d finsense"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  
+  backend:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://finsense_user:finsense_password@postgres:5432/finsense
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-jwt-secret-key-change-in-production
+      - NODE_ENV=development
+      # Replace 192.168.1.100 with your host's LAN IP
+      - FRONTEND_URL=http://192.168.1.115:3001
+      - DEEPSEEK_API_KEY=your-deepseek-api-key
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    restart: unless-stopped
+  
+  frontend:
+    build: ./frontend
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    environment:
+      # Replace 192.168.1.100 with your host's LAN IP
+      - VITE_API_BASE_URL=http://192.168.1.115:3000/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -3,6 +3,7 @@ import { createError } from '../middleware/errorHandler';
 import { TransactionService } from './TransactionService';
 import { BudgetService } from './BudgetService';
 import { CategoryService } from './CategoryService';
+import { ReceiptProcessingService } from './ReceiptProcessingService';
 
 interface ToolResult {
   success: boolean;
@@ -24,11 +25,13 @@ export class ToolService {
   private transactionService: TransactionService;
   private budgetService: BudgetService;
   private categoryService: CategoryService;
+  private receiptProcessingService: ReceiptProcessingService;
 
   constructor() {
     this.transactionService = new TransactionService();
     this.budgetService = new BudgetService();
     this.categoryService = new CategoryService();
+    this.receiptProcessingService = new ReceiptProcessingService();
   }
 
   getAvailableTools(): Tool[] {
@@ -190,6 +193,48 @@ export class ToolService {
           },
           required: ['category_name', 'budget_name', 'amount', 'period_type']
         }
+      },
+      {
+        name: 'get_receipt_items',
+        description: 'Get detailed individual items from a processed receipt',
+        parameters: {
+          type: 'object',
+          properties: {
+            receipt_id: { type: 'string', description: 'Receipt ID to get items from' },
+            transaction_id: { type: 'string', description: 'Transaction ID to find related receipt (alternative to receipt_id)' }
+          },
+          required: []
+        }
+      },
+      {
+        name: 'update_receipt_items',
+        description: 'Update or correct individual items in a processed receipt',
+        parameters: {
+          type: 'object',
+          properties: {
+            receipt_id: { type: 'string', description: 'Receipt ID to update items for' },
+            transaction_id: { type: 'string', description: 'Transaction ID to find related receipt (alternative to receipt_id)' },
+            items: {
+              type: 'array',
+              description: 'Array of corrected items to update',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Item name' },
+                  amount: { type: 'number', description: 'Item price/amount' },
+                  quantity: { type: 'number', description: 'Item quantity (optional, defaults to 1)' },
+                  category: { type: 'string', description: 'Item category (optional)' }
+                },
+                required: ['name', 'amount']
+              }
+            },
+            merchant_name: { type: 'string', description: 'Update merchant name (optional)' },
+            total_amount: { type: 'number', description: 'Update total amount (optional)' },
+            currency: { type: 'string', description: 'Update currency (optional)' },
+            date: { type: 'string', description: 'Update date in YYYY-MM-DD format (optional)' }
+          },
+          required: ['items']
+        }
       }
     ];
   }
@@ -229,6 +274,12 @@ export class ToolService {
           
         case 'create_budget_with_category':
           return await this.createBudgetWithCategory(parameters, userId);
+          
+        case 'get_receipt_items':
+          return await this.getReceiptItems(parameters, userId);
+          
+        case 'update_receipt_items':
+          return await this.updateReceiptItems(parameters, userId);
           
         default:
           return {
@@ -486,6 +537,225 @@ export class ToolService {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Failed to create budget with category'
+      };
+    }
+  }
+
+  private async getReceiptItems(params: any, userId: string): Promise<ToolResult> {
+    try {
+      let receiptId = params.receipt_id;
+      
+      // If transaction_id provided, find the related receipt
+      if (!receiptId && params.transaction_id) {
+        const client = await pool.connect();
+        try {
+          await client.query(`SET app.current_user_id = '${userId}'`);
+          const query = `
+            SELECT id FROM receipt_processing 
+            WHERE transaction_id = $1 AND user_id = $2
+          `;
+          const result = await client.query(query, [params.transaction_id, userId]);
+          if (result.rows.length > 0) {
+            receiptId = result.rows[0].id;
+          }
+        } finally {
+          client.release();
+        }
+      }
+      
+      if (!receiptId) {
+        return {
+          success: false,
+          message: 'Receipt ID or Transaction ID is required to get receipt items'
+        };
+      }
+      
+      const receipt = await this.receiptProcessingService.getReceiptById(receiptId, userId);
+      
+      if (!receipt) {
+        return {
+          success: false,
+          message: 'Receipt not found'
+        };
+      }
+      
+      const items = receipt.parsed_data?.items || [];
+      
+      if (items.length === 0) {
+        return {
+          success: true,
+          data: [],
+          message: 'No individual items found in this receipt'
+        };
+      }
+      
+      return {
+        success: true,
+        data: {
+          receipt_id: receipt.id,
+          merchant_name: receipt.parsed_data?.merchantName,
+          total_amount: receipt.parsed_data?.totalAmount,
+          currency: receipt.parsed_data?.currency,
+          date: receipt.parsed_data?.date,
+          items: items
+        },
+        message: `Found ${items.length} individual items in the receipt`
+      };
+    } catch (error) {
+      console.error('Error getting receipt items:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to get receipt items'
+      };
+    }
+  }
+
+  private async updateReceiptItems(params: any, userId: string): Promise<ToolResult> {
+    try {
+      let receiptId = params.receipt_id;
+      
+      // If transaction_id provided, find the related receipt
+      if (!receiptId && params.transaction_id) {
+        const client = await pool.connect();
+        try {
+          await client.query(`SET app.current_user_id = '${userId}'`);
+          const query = `
+            SELECT id FROM receipt_processing 
+            WHERE transaction_id = $1 AND user_id = $2
+          `;
+          const result = await client.query(query, [params.transaction_id, userId]);
+          if (result.rows.length > 0) {
+            receiptId = result.rows[0].id;
+          }
+        } finally {
+          client.release();
+        }
+      }
+      
+      if (!receiptId) {
+        return {
+          success: false,
+          message: 'Receipt ID or Transaction ID is required to update receipt items'
+        };
+      }
+      
+      // Get current receipt data
+      const receipt = await this.receiptProcessingService.getReceiptById(receiptId, userId);
+      
+      if (!receipt) {
+        return {
+          success: false,
+          message: 'Receipt not found'
+        };
+      }
+      
+      // Validate items format
+      if (!Array.isArray(params.items) || params.items.length === 0) {
+        return {
+          success: false,
+          message: 'Items array is required and must contain at least one item'
+        };
+      }
+      
+      // Validate each item
+      for (const item of params.items) {
+        if (!item.name || typeof item.name !== 'string') {
+          return {
+            success: false,
+            message: 'Each item must have a valid name'
+          };
+        }
+        if (!item.amount || typeof item.amount !== 'number' || item.amount <= 0) {
+          return {
+            success: false,
+            message: 'Each item must have a valid positive amount'
+          };
+        }
+        if (item.quantity && (typeof item.quantity !== 'number' || item.quantity <= 0)) {
+          return {
+            success: false,
+            message: 'Item quantity must be a positive number if provided'
+          };
+        }
+      }
+      
+      // Update the parsed data
+      const updatedParsedData = { ...receipt.parsed_data };
+      
+      // Update items
+      updatedParsedData.items = params.items.map((item: any) => ({
+        name: item.name,
+        amount: item.amount,
+        quantity: item.quantity || 1,
+        category: item.category || 'other'
+      }));
+      
+      // Update other fields if provided
+      if (params.merchant_name) {
+        updatedParsedData.merchantName = params.merchant_name;
+      }
+      if (params.total_amount) {
+        updatedParsedData.totalAmount = params.total_amount;
+      }
+      if (params.currency) {
+        updatedParsedData.currency = params.currency;
+      }
+      if (params.date) {
+        updatedParsedData.date = params.date;
+      }
+      
+      // Update database
+      const client = await pool.connect();
+      try {
+        await client.query(`SET app.current_user_id = '${userId}'`);
+        
+        const updateQuery = `
+          UPDATE receipt_processing 
+          SET extracted_data = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2 AND user_id = $3
+          RETURNING *
+        `;
+        
+        const updatedData = {
+          extractedText: receipt.extracted_text,
+          parsedData: updatedParsedData
+        };
+        
+        const result = await client.query(updateQuery, [
+          JSON.stringify(updatedData),
+          receiptId,
+          userId
+        ]);
+        
+        if (result.rows.length === 0) {
+          return {
+            success: false,
+            message: 'Receipt not found or you do not have permission to update it'
+          };
+        }
+        
+        return {
+          success: true,
+          data: {
+            receipt_id: receiptId,
+            merchant_name: updatedParsedData.merchantName,
+            total_amount: updatedParsedData.totalAmount,
+            currency: updatedParsedData.currency,
+            date: updatedParsedData.date,
+            items: updatedParsedData.items
+          },
+          message: `Successfully updated receipt with ${updatedParsedData.items?.length || 0} items`
+        };
+        
+      } finally {
+        client.release();
+      }
+      
+    } catch (error) {
+      console.error('Error updating receipt items:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to update receipt items'
       };
     }
   }

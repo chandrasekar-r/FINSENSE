@@ -1,1 +1,0 @@
-{"version":3,"file":"OCRService.d.ts","sourceRoot":"","sources":["../../src/services/OCRService.ts"],"names":[],"mappings":"AAGA,qBAAa,UAAU;IACrB,OAAO,CAAC,MAAM,CAAuB;IAE/B,gBAAgB,IAAI,OAAO,CAAC,IAAI,CAAC;IAmBjC,oBAAoB,CAAC,WAAW,EAAE,MAAM,GAAG,OAAO,CAAC,MAAM,CAAC;IAqChE,OAAO,CAAC,kBAAkB;IAOpB,eAAe,IAAI,OAAO,CAAC,IAAI,CAAC;CAMvC"}
