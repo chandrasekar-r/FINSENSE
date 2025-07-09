@@ -2,15 +2,18 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { DeepSeekService } from '../services/DeepSeekService';
 import { ChatService } from '../services/ChatService';
+import { ToolService } from '../services/ToolService';
 import { createError } from '../middleware/errorHandler';
 
 export class ChatController {
   private deepSeekService: DeepSeekService;
   private chatService: ChatService;
+  private toolService: ToolService;
 
   constructor() {
     this.deepSeekService = new DeepSeekService();
     this.chatService = new ChatService();
+    this.toolService = new ToolService();
   }
 
   async processQuery(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -26,7 +29,7 @@ export class ChatController {
       const financialContext = await this.chatService.getUserFinancialContext(userId);
       
       // Process query with DeepSeek
-      const response = await this.deepSeekService.processFinancialQuery(message, financialContext, userId);
+      const response = await this.deepSeekService.processFinancialQuery(message, financialContext, userId, this.toolService);
       
       // Save chat interaction to database
       await this.chatService.saveChatInteraction(userId, message, response);
@@ -82,7 +85,8 @@ export class ChatController {
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
           },
           userId,
-          history.messages
+          history.messages,
+          this.toolService
         );
         
         // Save complete interaction to database

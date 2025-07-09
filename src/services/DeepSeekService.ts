@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { createError } from '../middleware/errorHandler';
-import { ToolService } from './ToolService';
+// Removed ToolService import to break circular dependency
 
 interface DeepSeekResponse {
   choices: Array<{
@@ -36,11 +36,8 @@ export class DeepSeekService {
   private apiKey: string;
   private baseUrl: string = 'https://api.deepseek.com/v1';
   private model = 'deepseek-chat';
-  private toolService: ToolService;
-
   constructor() {
     this.apiKey = process.env.DEEPSEEK_API_KEY || '';
-    this.toolService = new ToolService();
     if (!this.apiKey) {
       console.warn('DeepSeek API key not found. Receipt parsing will be disabled.');
     }
@@ -73,10 +70,13 @@ export class DeepSeekService {
     }
   }
 
-  async processFinancialQuery(message: string, context: FinancialContext, userId?: string): Promise<string> {
+  async processFinancialQuery(message: string, context: FinancialContext, userId?: string, toolService?: any): Promise<string> {
     try {
-      const rawTools = this.toolService.getAvailableTools();
-      const availableTools = rawTools.map(tool => ({
+      if (!toolService) {
+        throw new Error('ToolService instance is required for processFinancialQuery');
+      }
+      const rawTools = toolService.getAvailableTools();
+      const availableTools = rawTools.map((tool: any) => ({
         type: "function",
         function: {
           name: tool.name,
@@ -112,8 +112,14 @@ You can help the user by:
 3. Creating, modifying, or deleting budgets
 4. Creating new spending categories
 5. Providing financial analysis and insights
+6. Showing detailed receipt items from scanned receipts
 
 When the user asks you to make changes (add transactions, create budgets, etc.), use the appropriate function calls to execute these actions.
+
+IMPORTANT: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
+1. First use get_transactions to find the relevant transaction
+2. Then use get_receipt_items with the transaction_id to show the detailed itemized breakdown
+3. Return the data in JSON format for frontend processing
 
 IMPORTANT: When creating budgets:
 1. Always use the currency specified by the user (e.g., EUR, USD)
@@ -133,7 +139,7 @@ Provide helpful, actionable advice in a conversational tone. If you need to use 
         for (const toolCall of response.toolCalls) {
           const args = JSON.parse(toolCall.function.arguments);
           args.message = message; 
-          const result = await this.toolService.executeTool(
+          const result = await toolService.executeTool(
             toolCall.function.name, 
             args, 
             userId
@@ -156,11 +162,15 @@ Provide helpful, actionable advice in a conversational tone. If you need to use 
     context: FinancialContext, 
     onChunk: (chunk: string) => void,
     userId?: string,
-    history: any[] = []
+    history: any[] = [],
+    toolService?: any
   ): Promise<void> {
     try {
-      const rawTools = this.toolService.getAvailableTools();
-      const availableTools = rawTools.map(tool => ({
+      if (!toolService) {
+        throw new Error('ToolService instance is required for processFinancialQueryStream');
+      }
+      const rawTools = toolService.getAvailableTools();
+      const availableTools = rawTools.map((tool: any) => ({
         type: "function",
         function: {
           name: tool.name,
@@ -193,12 +203,18 @@ You can help the user by:
 3. Creating, modifying, or deleting budgets
 4. Creating new spending categories
 5. Providing financial analysis and insights
+6. Showing detailed receipt items from scanned receipts
 
 When the user asks you to make changes (add transactions, create budgets, etc.), you MUST use the appropriate function calls to execute these actions. Do not just describe what you would do.
 
+IMPORTANT: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
+1. First use get_transactions to find the relevant transaction
+2. Then use get_receipt_items with the transaction_id to show the detailed itemized breakdown
+3. Return the data in JSON format for frontend processing
+
 IMPORTANT: When updating budgets, you must provide at least one meaningful update field (name, amount, currency, or alert_threshold). Do not call update_budget with only identification fields like budget_name or category_name.
 
-IMPORTANT: For structured data like budget breakdowns, spending analysis, or comparisons, format your response as JSON with the following structure:
+IMPORTANT: For structured data like budget breakdowns, spending analysis, comparisons, and receipt items, format your response as JSON with the following structure:
 {
   "type": "structured_response",
   "content": {
@@ -242,9 +258,27 @@ For spending analysis, use:
   }
 }
 
+For receipt items, use:
+{
+  "type": "receipt_details",
+  "content": {
+    "message": "Receipt items from [merchant] on [date]",
+    "data": {
+      "merchant": "REWE",
+      "date": "2025-07-05",
+      "total_amount": 29.36,
+      "currency": "EUR",
+      "items": [
+        {"name": "KAESE SALAMI EUR STICK", "amount": 1.89, "quantity": 1, "category": "groceries"},
+        {"name": "BERGKAESE SCH", "amount": 2.99, "quantity": 1, "category": "groceries"}
+      ]
+    }
+  }
+}
+
 Provide helpful, actionable advice in a conversational tone. If you need to use tools to fulfill the request, explain what you're doing and why.`;
 
-      await this.makeAPIRequestWithToolsStream(systemPrompt, message, availableTools, onChunk, userId, history);
+      await this.makeAPIRequestWithToolsStream(systemPrompt, message, availableTools, onChunk, userId, history, toolService);
 
     } catch (error) {
       console.error('DeepSeek: Streaming financial query failed:', error);
@@ -539,28 +573,26 @@ Receipt: ${extractedText}`;
     tools: any[],
     onChunk: (chunk: string) => void,
     userId?: string,
-    history: any[] = []
+    history: any[] = [],
+    toolService?: any
   ): Promise<void> {
     try {
       const initialResponse = await this.makeAPIRequestWithTools(systemPrompt, userMessage, tools, history);
 
-      if (userId && initialResponse.tool_calls && initialResponse.tool_calls.length > 0) {
+      if (userId && initialResponse.tool_calls && initialResponse.tool_calls.length > 0 && toolService) {
         console.log('DeepSeek: Executing tools:', initialResponse.tool_calls);
         
         const toolResults = [];
         for (const toolCall of initialResponse.tool_calls) {
-          const result = await this.toolService.executeTool(
+          const result = await toolService.executeTool(
             toolCall.function.name,
             JSON.parse(toolCall.function.arguments),
             userId
           );
-          toolResults.push({
-            tool_call_id: toolCall.id,
-            output: JSON.stringify(result),
-          });
+          toolResults.push({ name: toolCall.function.name, result });
         }
 
-        await this.makeAPIRequestWithToolResultsStream(systemPrompt, userMessage, initialResponse.tool_calls, toolResults, onChunk, history);
+        await this.makeAPIRequestWithToolResultsStreamFixed(systemPrompt, userMessage, initialResponse.content, toolResults, onChunk, history);
       
       } else {
         const content = initialResponse.content || "I'm not sure how to help with that. Could you rephrase your question?";
@@ -576,6 +608,81 @@ Receipt: ${extractedText}`;
     }
   }
 
+  private async makeAPIRequestWithToolResultsStreamFixed(
+    systemPrompt: string,
+    userMessage: string,
+    assistantResponse: string,
+    toolResults: any[],
+    onChunk: (chunk: string) => void,
+    history: any[] = []
+  ): Promise<void> {
+    try {
+      console.log('DeepSeek: Making streaming API request with tool results');
+      console.log('DeepSeek: Tool results being sent:', JSON.stringify(toolResults, null, 2));
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.flatMap(h => [
+          { role: 'user', content: h.user_message },
+          { role: 'assistant', content: h.ai_response }
+        ]),
+        { role: 'user', content: userMessage },
+        { role: 'assistant', content: assistantResponse },
+        { 
+          role: 'user', 
+          content: `Tool execution results:\n${toolResults.map(tr => 
+            `${tr.name}: ${tr.result.success ? 'Success' : 'Failed'} - ${tr.result.message}${tr.result.data ? '\nData: ' + JSON.stringify(tr.result.data, null, 2) : ''}`
+          ).join('\n')}\n\nPlease provide a final response based on these results.`
+        }
+      ];
+
+      const response = await axios.post(
+        `${this.baseUrl}/chat/completions`,
+        {
+          model: this.model,
+          messages,
+          stream: true,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.apiKey!}`,
+            'Content-Type': 'application/json',
+          },
+          responseType: 'stream'
+        }
+      );
+
+      const stream = response.data as NodeJS.ReadableStream;
+
+      stream.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') return;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices[0]?.delta?.content;
+              if (content) {
+                onChunk(content);
+              }
+            } catch (e) {
+              // Ignore incomplete JSON
+            }
+          }
+        }
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        stream.on('end', resolve);
+        stream.on('error', reject);
+      });
+    } catch (error) {
+      console.error('DeepSeek: Streaming request with tool results failed:', error);
+      throw error;
+    }
+  }
+
   private async makeAPIRequestWithToolResultsStream(
     systemPrompt: string,
     userMessage: string,
@@ -586,6 +693,7 @@ Receipt: ${extractedText}`;
   ): Promise<void> {
     try {
       console.log('DeepSeek: Making streaming API request with tool results');
+      console.log('DeepSeek: Tool results being sent:', JSON.stringify(toolResults, null, 2));
 
       const messages = [
         { role: 'system', content: systemPrompt },

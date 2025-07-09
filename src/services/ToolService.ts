@@ -139,7 +139,7 @@ export class ToolService {
       },
       {
         name: 'get_transactions',
-        description: 'Get transactions with optional filters',
+        description: 'Get transactions with optional filters. Use this to find transactions first, then use get_receipt_items to see detailed items from receipts.',
         parameters: {
           type: 'object',
           properties: {
@@ -196,7 +196,7 @@ export class ToolService {
       },
       {
         name: 'get_receipt_items',
-        description: 'Get detailed individual items from a processed receipt',
+        description: 'Get detailed individual items from a scanned receipt. Use this when users ask about specific items they bought, what was on their receipt, individual product details, or want to see an itemized breakdown of their purchase. This shows each item name, price, quantity, and category from receipts.',
         parameters: {
           type: 'object',
           properties: {
