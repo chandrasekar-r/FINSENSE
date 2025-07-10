@@ -196,7 +196,7 @@ export class ToolService {
       },
       {
         name: 'get_receipt_items',
-        description: 'MANDATORY: Get detailed individual items from a scanned receipt. ALWAYS use this tool when users ask about: specific items they bought, what was on their receipt, individual product details, itemized breakdown of purchases, or "show me the detailed receipt". This shows each item name, price, quantity, and category from receipts. Use the transaction_id from get_transactions results.',
+        description: 'MANDATORY: Get detailed individual items from a scanned receipt. ALWAYS use this tool when users ask about: specific items they bought, what was on their receipt, individual product details, itemized breakdown of purchases, or "show me the detailed receipt". This shows each item name, price, quantity, and category from receipts. Use the transaction_id from get_transactions results. NOTE: Only transactions created from scanned receipts will have item-level data.',
         parameters: {
           type: 'object',
           properties: {
@@ -557,6 +557,12 @@ export class ToolService {
           const result = await client.query(query, [params.transaction_id, userId]);
           if (result.rows.length > 0) {
             receiptId = result.rows[0].id;
+          } else {
+            // No receipt found for this transaction
+            return {
+              success: false,
+              message: `No receipt data found for transaction ID ${params.transaction_id}. This transaction may not have been created from a scanned receipt, or the receipt processing failed.`
+            };
           }
         } finally {
           client.release();
@@ -566,7 +572,7 @@ export class ToolService {
       if (!receiptId) {
         return {
           success: false,
-          message: 'Receipt ID or Transaction ID is required to get receipt items'
+          message: 'Receipt ID or Transaction ID is required to get receipt items. Please provide either receipt_id or transaction_id parameter.'
         };
       }
       
@@ -575,40 +581,60 @@ export class ToolService {
       if (!receipt) {
         return {
           success: false,
-          message: 'Receipt not found'
+          message: `Receipt with ID ${receiptId} not found or you don't have permission to access it.`
         };
       }
       
       console.log('🔍 [ToolService] Retrieved receipt:', JSON.stringify(receipt, null, 2));
       console.log('🔍 [ToolService] Receipt parsed_data:', JSON.stringify(receipt.parsed_data, null, 2));
       
-      const items = receipt.parsed_data?.items || [];
+      // Handle different data structures
+      const parsedData = receipt.parsed_data;
+      const items = parsedData?.items || [];
       
       if (items.length === 0) {
+        // Check if there's any receipt data at all
+        if (!parsedData || Object.keys(parsedData).length === 0) {
+          return {
+            success: false,
+            message: `Receipt ${receiptId} exists but contains no parsed data. The receipt may have failed to process correctly.`
+          };
+        }
+        
         return {
           success: true,
-          data: [],
-          message: 'No individual items found in this receipt'
+          data: {
+            receipt_id: receipt.id,
+            merchant_name: parsedData?.merchantName || 'Unknown',
+            total_amount: parsedData?.totalAmount || 0,
+            currency: parsedData?.currency || 'USD',
+            date: parsedData?.date || 'Unknown',
+            items: []
+          },
+          message: `Receipt found from ${parsedData?.merchantName || 'Unknown merchant'} but no individual items were detected. Only transaction summary is available.`
         };
       }
+      
+      // Validate and clean items data
+      const validItems = items.filter((item: any) => item && item.name && item.amount);
       
       return {
         success: true,
         data: {
           receipt_id: receipt.id,
-          merchant_name: receipt.parsed_data?.merchantName,
-          total_amount: receipt.parsed_data?.totalAmount,
-          currency: receipt.parsed_data?.currency,
-          date: receipt.parsed_data?.date,
-          items: items
+          merchant_name: parsedData?.merchantName || 'Unknown',
+          total_amount: parsedData?.totalAmount || 0,
+          currency: parsedData?.currency || 'USD',
+          date: parsedData?.date || 'Unknown',
+          items: validItems
         },
-        message: `Found ${items.length} individual items in the receipt`
+        message: `Found ${validItems.length} individual items in the receipt from ${parsedData?.merchantName || 'Unknown merchant'}`
       };
     } catch (error) {
       console.error('Error getting receipt items:', error);
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to get receipt items'
+        message: `Failed to get receipt items: ${error instanceof Error ? error.message : 'Unknown error occurred'}`
       };
     }
   }

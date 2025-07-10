@@ -334,7 +334,56 @@ export const ChatPage: React.FC = () => {
   const formatMessage = (text: string) => {
     // Check if the response contains JSON structured data
     try {
-      // First, try to find JSON-like structure in the text
+      // First, try to parse the entire text as JSON
+      const trimmedText = text.trim();
+      if (trimmedText.startsWith('{') && trimmedText.endsWith('}')) {
+        const jsonResponse = JSON.parse(trimmedText);
+        if (jsonResponse.type && jsonResponse.content) {
+          return renderStructuredResponse(jsonResponse);
+        }
+      }
+      
+      // Then, try to find JSON-like structure embedded in the text
+      const jsonPatterns = [
+        /\{"type":\s*"[^"]+",\s*"content":\s*\{[^}]*\}[^}]*\}/g,
+        /\{"type":[^}]*\}/g
+      ];
+      
+      for (const pattern of jsonPatterns) {
+        const matches = text.match(pattern);
+        if (matches) {
+          for (const match of matches) {
+            try {
+              const jsonResponse = JSON.parse(match);
+              if (jsonResponse.type && jsonResponse.content) {
+                // Split the response into parts: before JSON, JSON, and after JSON
+                const beforeJson = text.substring(0, text.indexOf(match)).trim();
+                const afterJson = text.substring(text.indexOf(match) + match.length).trim();
+                
+                return (
+                  <div className="space-y-4">
+                    {beforeJson && (
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {formatInlineText(beforeJson)}
+                      </div>
+                    )}
+                    {renderStructuredResponse(jsonResponse)}
+                    {afterJson && (
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {formatInlineText(afterJson)}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+            } catch (e) {
+              // Continue to next match
+            }
+          }
+        }
+      }
+      
+      // Manual JSON extraction with proper brace counting
       const jsonStart = text.indexOf('{"type":');
       if (jsonStart !== -1) {
         // Extract potential JSON from the first opening brace to the end
@@ -343,50 +392,69 @@ export const ChatPage: React.FC = () => {
         // Try to find the complete JSON object
         let braceCount = 0;
         let endIndex = -1;
+        let inString = false;
+        let escapeNext = false;
         
         for (let i = 0; i < potentialJson.length; i++) {
-          if (potentialJson[i] === '{') {
-            braceCount++;
-          } else if (potentialJson[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-              endIndex = i;
-              break;
+          const char = potentialJson[i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"') {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') {
+              braceCount++;
+            } else if (char === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                endIndex = i;
+                break;
+              }
             }
           }
         }
         
         if (endIndex !== -1) {
-          const jsonString = potentialJson.substring(0, endIndex + 1);
-          const jsonResponse = JSON.parse(jsonString);
-          if (jsonResponse.type && jsonResponse.content) {
-            // Split the response into parts: before JSON, JSON, and after JSON
-            const beforeJson = text.substring(0, jsonStart).trim();
-            const afterJson = text.substring(jsonStart + endIndex + 1).trim();
-            
-            return (
-              <div className="space-y-4">
-                {beforeJson && (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    {formatInlineText(beforeJson)}
-                  </div>
-                )}
-                {renderStructuredResponse(jsonResponse)}
-                {afterJson && (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    {formatInlineText(afterJson)}
-                  </div>
-                )}
-              </div>
-            );
+          try {
+            const jsonString = potentialJson.substring(0, endIndex + 1);
+            const jsonResponse = JSON.parse(jsonString);
+            if (jsonResponse.type && jsonResponse.content) {
+              // Split the response into parts: before JSON, JSON, and after JSON
+              const beforeJson = text.substring(0, jsonStart).trim();
+              const afterJson = text.substring(jsonStart + endIndex + 1).trim();
+              
+              return (
+                <div className="space-y-4">
+                  {beforeJson && (
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      {formatInlineText(beforeJson)}
+                    </div>
+                  )}
+                  {renderStructuredResponse(jsonResponse)}
+                  {afterJson && (
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      {formatInlineText(afterJson)}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+          } catch (e) {
+            // JSON parsing failed, continue with markdown
           }
         }
-      }
-      
-      // Also try to parse the entire text as JSON (fallback)
-      const jsonResponse = JSON.parse(text.trim());
-      if (jsonResponse.type && jsonResponse.content) {
-        return renderStructuredResponse(jsonResponse);
       }
     } catch (e) {
       // Not JSON, continue with markdown formatting

@@ -116,18 +116,26 @@ You can help the user by:
 
 When the user asks you to make changes (add transactions, create budgets, etc.), use the appropriate function calls to execute these actions.
 
-CRITICAL WORKFLOW: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
-1. ALWAYS use get_transactions to find the relevant transaction first
-2. IMMEDIATELY after finding the transaction, you MUST use get_receipt_items with the transaction_id to show the detailed itemized breakdown
-3. NEVER respond about receipts without calling get_receipt_items - if you find a transaction, there may be receipt details available
-4. Return the data in JSON format using the receipt_details type for frontend processing
-5. If get_receipt_items returns no items, then and only then say no receipt details are available
+CRITICAL RECEIPT WORKFLOW - MANDATORY FOR ALL RECEIPT QUERIES:
+When users ask about: "items I bought", "what was on my receipt", "individual items", "detailed receipt", "receipt breakdown", "what did I buy from [merchant]", or similar receipt-related questions:
 
-EXAMPLE WORKFLOW:
-- User asks: "show me the detailed receipt for REWE on July 5"
-- Step 1: Call get_transactions with filters for REWE and July 5
-- Step 2: Take the transaction_id from the result and IMMEDIATELY call get_receipt_items with that transaction_id
-- Step 3: Format the response as receipt_details JSON type
+STEP 1: ALWAYS call get_transactions first with appropriate filters (merchant name, date, etc.)
+STEP 2: For EVERY transaction found, IMMEDIATELY call get_receipt_items using the transaction_id
+STEP 3: If receipt items are found, format as receipt_details JSON type
+STEP 4: If no receipt items found, then inform user that detailed receipt data is not available
+
+YOU MUST NEVER skip calling get_receipt_items if a transaction is found. This is MANDATORY.
+
+EXAMPLE WORKFLOWS:
+Query: "show me the detailed receipt for REWE on July 5"
+1. get_transactions(merchant: "REWE", start_date: "2025-07-05", end_date: "2025-07-05")
+2. get_receipt_items(transaction_id: [result_transaction_id])
+3. Format as receipt_details JSON
+
+Query: "what items did I buy from the grocery store yesterday"
+1. get_transactions(category: "groceries", start_date: "yesterday")
+2. For each transaction: get_receipt_items(transaction_id: [transaction_id])
+3. Format all receipt details as receipt_details JSON
 
 IMPORTANT: When creating budgets:
 1. Always use the currency specified by the user (e.g., EUR, USD)
@@ -142,9 +150,9 @@ Provide helpful, actionable advice in a conversational tone. If you need to use 
 
       let response = await this.makeAPIRequestWithTools(prompt, message, availableTools, []);
       
-      if (userId && response.toolCalls) {
+      if (userId && response.tool_calls) {
         const toolResults = [];
-        for (const toolCall of response.toolCalls) {
+        for (const toolCall of response.tool_calls) {
           const args = JSON.parse(toolCall.function.arguments);
           args.message = message; 
           const result = await toolService.executeTool(
@@ -215,18 +223,26 @@ You can help the user by:
 
 When the user asks you to make changes (add transactions, create budgets, etc.), you MUST use the appropriate function calls to execute these actions. Do not just describe what you would do.
 
-CRITICAL WORKFLOW: When users ask about specific items they bought, individual receipt details, or what was on their receipt:
-1. ALWAYS use get_transactions to find the relevant transaction first
-2. IMMEDIATELY after finding the transaction, you MUST use get_receipt_items with the transaction_id to show the detailed itemized breakdown
-3. NEVER respond about receipts without calling get_receipt_items - if you find a transaction, there may be receipt details available
-4. Return the data in JSON format using the receipt_details type for frontend processing
-5. If get_receipt_items returns no items, then and only then say no receipt details are available
+CRITICAL RECEIPT WORKFLOW - MANDATORY FOR ALL RECEIPT QUERIES:
+When users ask about: "items I bought", "what was on my receipt", "individual items", "detailed receipt", "receipt breakdown", "what did I buy from [merchant]", or similar receipt-related questions:
 
-EXAMPLE WORKFLOW:
-- User asks: "show me the detailed receipt for REWE on July 5"
-- Step 1: Call get_transactions with filters for REWE and July 5
-- Step 2: Take the transaction_id from the result and IMMEDIATELY call get_receipt_items with that transaction_id
-- Step 3: Format the response as receipt_details JSON type
+STEP 1: ALWAYS call get_transactions first with appropriate filters (merchant name, date, etc.)
+STEP 2: For EVERY transaction found, IMMEDIATELY call get_receipt_items using the transaction_id
+STEP 3: If receipt items are found, format as receipt_details JSON type
+STEP 4: If no receipt items found, then inform user that detailed receipt data is not available
+
+YOU MUST NEVER skip calling get_receipt_items if a transaction is found. This is MANDATORY.
+
+EXAMPLE WORKFLOWS:
+Query: "show me the detailed receipt for REWE on July 5"
+1. get_transactions(merchant: "REWE", start_date: "2025-07-05", end_date: "2025-07-05")
+2. get_receipt_items(transaction_id: [result_transaction_id])
+3. Format as receipt_details JSON
+
+Query: "what items did I buy from the grocery store yesterday"
+1. get_transactions(category: "groceries", start_date: "yesterday")
+2. For each transaction: get_receipt_items(transaction_id: [transaction_id])
+3. Format all receipt details as receipt_details JSON
 
 IMPORTANT: When updating budgets, you must provide at least one meaningful update field (name, amount, currency, or alert_threshold). Do not call update_budget with only identification fields like budget_name or category_name.
 
