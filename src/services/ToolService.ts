@@ -4,6 +4,7 @@ import { TransactionService } from './TransactionService';
 import { BudgetService } from './BudgetService';
 import { CategoryService } from './CategoryService';
 import { ReceiptProcessingService } from './ReceiptProcessingService';
+import { logger } from '../utils/logger';
 
 interface ToolResult {
   success: boolean;
@@ -542,11 +543,12 @@ export class ToolService {
   }
 
   private async getReceiptItems(params: any, userId: string): Promise<ToolResult> {
+    logger.info('[ToolService.getReceiptItems] Called with params:', { params, userId });
     try {
       let receiptId = params.receipt_id;
       
-      // If transaction_id provided, find the related receipt
       if (!receiptId && params.transaction_id) {
+        logger.info(`[ToolService.getReceiptItems] Attempting to find receipt_id for transaction_id: ${params.transaction_id}`);
         const client = await pool.connect();
         try {
           await client.query(`SET app.current_user_id = '${userId}'`);
@@ -557,11 +559,12 @@ export class ToolService {
           const result = await client.query(query, [params.transaction_id, userId]);
           if (result.rows.length > 0) {
             receiptId = result.rows[0].id;
+            logger.info(`[ToolService.getReceiptItems] Found receipt_id: ${receiptId} for transaction_id: ${params.transaction_id}`);
           } else {
-            // No receipt found for this transaction
+            logger.warn(`[ToolService.getReceiptItems] No receipt_id found for transaction_id: ${params.transaction_id}`);
             return {
               success: false,
-              message: `No receipt data found for transaction ID ${params.transaction_id}. This transaction may not have been created from a scanned receipt, or the receipt processing failed.`
+              message: `No receipt data found for transaction ID ${params.transaction_id}. This transaction may not have been created from a scanned receipt, or the receipt processing failed or is not yet linked.`
             };
           }
         } finally {
@@ -570,39 +573,42 @@ export class ToolService {
       }
       
       if (!receiptId) {
+        logger.warn('[ToolService.getReceiptItems] No receipt_id or transaction_id provided that resolves to a receipt_id.');
         return {
           success: false,
-          message: 'Receipt ID or Transaction ID is required to get receipt items. Please provide either receipt_id or transaction_id parameter.'
+          message: 'Receipt ID or Transaction ID is required to get receipt items. Please provide either receipt_id or transaction_id parameter that links to a processed receipt.'
         };
       }
       
+      logger.info(`[ToolService.getReceiptItems] Fetching receipt data for receipt_id: ${receiptId}`);
       const receipt = await this.receiptProcessingService.getReceiptById(receiptId, userId);
       
       if (!receipt) {
+        logger.warn(`[ToolService.getReceiptItems] Receipt not found for receipt_id: ${receiptId}`);
         return {
           success: false,
           message: `Receipt with ID ${receiptId} not found or you don't have permission to access it.`
         };
       }
       
-      console.log('🔍 [ToolService] Retrieved receipt:', JSON.stringify(receipt, null, 2));
-      console.log('🔍 [ToolService] Receipt parsed_data:', JSON.stringify(receipt.parsed_data, null, 2));
+      logger.info('[ToolService.getReceiptItems] Retrieved receipt. Extracted_text length:', receipt.extracted_text?.length);
+      logger.info('[ToolService.getReceiptItems] Receipt parsed_data:', receipt.parsed_data);
       
-      // Handle different data structures
       const parsedData = receipt.parsed_data;
       const items = parsedData?.items || [];
       
       if (items.length === 0) {
-        // Check if there's any receipt data at all
-        if (!parsedData || Object.keys(parsedData).length === 0) {
+        if (!parsedData || Object.keys(parsedData).length === 0 || (parsedData.items && parsedData.items.length === 0)) {
+           logger.info(`[ToolService.getReceiptItems] Receipt ${receiptId} has no parsed data or no items in parsed_data.`);
           return {
-            success: false,
-            message: `Receipt ${receiptId} exists but contains no parsed data. The receipt may have failed to process correctly.`
+            success: false, // Changed to false to be more indicative of "no items found"
+            message: `Receipt ${receiptId} exists but contains no parsed item data. The receipt may have failed to process items correctly or has no items.`
           };
         }
-        
+        // This case might be redundant if the above catches it.
+        logger.info(`[ToolService.getReceiptItems] Receipt ${receiptId} found, but no individual items were detected in parsed_data. Merchant: ${parsedData?.merchantName}`);
         return {
-          success: true,
+          success: true, // Or false, depending on how "not working" is defined. Let's keep true but with a clear message.
           data: {
             receipt_id: receipt.id,
             merchant_name: parsedData?.merchantName || 'Unknown',
@@ -611,13 +617,16 @@ export class ToolService {
             date: parsedData?.date || 'Unknown',
             items: []
           },
-          message: `Receipt found from ${parsedData?.merchantName || 'Unknown merchant'} but no individual items were detected. Only transaction summary is available.`
+          message: `Receipt found from ${parsedData?.merchantName || 'Unknown merchant'} but no individual items were detected in the initially parsed data. Only transaction summary might be available if confirmed.`
         };
       }
       
-      // Validate and clean items data
-      const validItems = items.filter((item: any) => item && item.name && item.amount);
+      const validItems = items.filter((item: any) => item && typeof item.name === 'string' && typeof item.amount === 'number');
+      if (validItems.length !== items.length) {
+        logger.warn(`[ToolService.getReceiptItems] Some items were filtered out due to missing name or amount. Original: ${items.length}, Valid: ${validItems.length}`);
+      }
       
+      logger.info(`[ToolService.getReceiptItems] Successfully processed receipt_id: ${receiptId}. Found ${validItems.length} valid items.`);
       return {
         success: true,
         data: {
@@ -631,7 +640,7 @@ export class ToolService {
         message: `Found ${validItems.length} individual items in the receipt from ${parsedData?.merchantName || 'Unknown merchant'}`
       };
     } catch (error) {
-      console.error('Error getting receipt items:', error);
+      logger.error('[ToolService.getReceiptItems] Error getting receipt items:', error);
       return {
         success: false,
         message: `Failed to get receipt items: ${error instanceof Error ? error.message : 'Unknown error occurred'}`

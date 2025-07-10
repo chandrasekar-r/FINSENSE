@@ -18,6 +18,18 @@ export const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Helper to log phase changes
+  const updateStreamingPhase = (newContent: string) => {
+    // Read current phase directly from state getter, as 'streamingPhase' variable might be stale in this closure
+    setStreamingPhase(currentPhase => {
+      const newPhase = detectStreamingPhase(newContent);
+      if (currentPhase !== newPhase) {
+        console.log(`[ChatPage.updateStreamingPhase] Phase changing from '${currentPhase}' to '${newPhase}'. Content snapshot for detection:`, newContent.slice(-200)); // Log last 200 chars
+      }
+      return newPhase;
+    });
+  };
+
   const detectStreamingPhase = (content: string) => {
     if (content.includes('🔍 Looking up')) {
       return 'searching'
@@ -135,7 +147,7 @@ export const ChatPage: React.FC = () => {
     setError(null)
     setIsStreaming(true)
     setStreamingResponse('')
-    setStreamingPhase('thinking')
+    setStreamingPhase('thinking'); console.log("[ChatPage.handleRecommendationClick] Set phase to 'thinking'");
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -154,7 +166,7 @@ export const ChatPage: React.FC = () => {
       (chunk: string) => {
         setStreamingResponse(prev => {
           const newResponse = prev + chunk
-          setStreamingPhase(detectStreamingPhase(newResponse))
+          updateStreamingPhase(newResponse); // Use new helper for logging
           return newResponse
         })
       },
@@ -162,7 +174,7 @@ export const ChatPage: React.FC = () => {
       (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
-        setStreamingPhase('thinking')
+        setStreamingPhase('thinking'); console.log("[ChatPage.handleRecommendationClick/onComplete] Reset phase to 'thinking'");
         
         // Update with complete response
         setMessages(prev => [
@@ -185,7 +197,7 @@ export const ChatPage: React.FC = () => {
       (errorMessage: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
-        setStreamingPhase('thinking')
+        setStreamingPhase('thinking'); console.log("[ChatPage.handleRecommendationClick/onError] Reset phase to 'thinking'");
         setError(errorMessage)
         
         // Remove the temp message on error
@@ -243,7 +255,7 @@ export const ChatPage: React.FC = () => {
     setError(null)
     setIsStreaming(true)
     setStreamingResponse('')
-    setStreamingPhase('thinking')
+    setStreamingPhase('thinking'); console.log("[ChatPage.handleSendMessage] Set phase to 'thinking'");
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -262,7 +274,7 @@ export const ChatPage: React.FC = () => {
       (chunk: string) => {
         setStreamingResponse(prev => {
           const newResponse = prev + chunk
-          setStreamingPhase(detectStreamingPhase(newResponse))
+          updateStreamingPhase(newResponse); // Use new helper for logging
           return newResponse
         })
       },
@@ -270,7 +282,7 @@ export const ChatPage: React.FC = () => {
       (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
-        setStreamingPhase('thinking')
+        setStreamingPhase('thinking'); console.log("[ChatPage.handleSendMessage/onComplete] Reset phase to 'thinking'");
         
         // Update with complete response
         setMessages(prev => [
@@ -293,7 +305,7 @@ export const ChatPage: React.FC = () => {
       (errorMessage: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
-        setStreamingPhase('thinking')
+        setStreamingPhase('thinking'); console.log("[ChatPage.handleSendMessage/onError] Reset phase to 'thinking'");
         setError(errorMessage)
         
         // Remove the temp message on error
@@ -332,30 +344,38 @@ export const ChatPage: React.FC = () => {
   }
 
   const formatMessage = (text: string) => {
+    console.log('[ChatPage.formatMessage] Input text:', text); // Log input
+
     // Check if the response contains JSON structured data
     try {
       // First, try to parse the entire text as JSON
       const trimmedText = text.trim();
       if (trimmedText.startsWith('{') && trimmedText.endsWith('}')) {
+        console.log('[ChatPage.formatMessage] Attempting to parse entire text as JSON.');
         const jsonResponse = JSON.parse(trimmedText);
         if (jsonResponse.type && jsonResponse.content) {
+          console.log('[ChatPage.formatMessage] Successfully parsed entire text as JSON:', jsonResponse);
           return renderStructuredResponse(jsonResponse);
         }
       }
       
       // Then, try to find JSON-like structure embedded in the text
       const jsonPatterns = [
-        /\{"type":\s*"[^"]+",\s*"content":\s*\{[^}]*\}[^}]*\}/g,
-        /\{"type":[^}]*\}/g
+        /\{"type":\s*"[^"]+",\s*"content":\s*\{[^}]*\}[^}]*\}/g, // More specific
+        // /\{"type":[^}]*\}/g // This one is too broad and can cause issues, consider removing or making more specific
       ];
       
       for (const pattern of jsonPatterns) {
+        console.log('[ChatPage.formatMessage] Trying pattern:', pattern);
         const matches = text.match(pattern);
         if (matches) {
+          console.log('[ChatPage.formatMessage] Found matches with pattern:', matches);
           for (const match of matches) {
+            console.log('[ChatPage.formatMessage] Attempting to parse match:', match);
             try {
               const jsonResponse = JSON.parse(match);
               if (jsonResponse.type && jsonResponse.content) {
+                console.log('[ChatPage.formatMessage] Successfully parsed match as JSON:', jsonResponse);
                 // Split the response into parts: before JSON, JSON, and after JSON
                 const beforeJson = text.substring(0, text.indexOf(match)).trim();
                 const afterJson = text.substring(text.indexOf(match) + match.length).trim();
@@ -377,6 +397,7 @@ export const ChatPage: React.FC = () => {
                 );
               }
             } catch (e) {
+              console.warn('[ChatPage.formatMessage] Failed to parse regex match as JSON:', match, e);
               // Continue to next match
             }
           }
@@ -386,6 +407,7 @@ export const ChatPage: React.FC = () => {
       // Manual JSON extraction with proper brace counting
       const jsonStart = text.indexOf('{"type":');
       if (jsonStart !== -1) {
+        console.log('[ChatPage.formatMessage] Attempting manual JSON extraction starting at index:', jsonStart);
         // Extract potential JSON from the first opening brace to the end
         const potentialJson = text.substring(jsonStart);
         
@@ -429,8 +451,10 @@ export const ChatPage: React.FC = () => {
         if (endIndex !== -1) {
           try {
             const jsonString = potentialJson.substring(0, endIndex + 1);
+            console.log('[ChatPage.formatMessage] Manual extraction produced potential JSON string:', jsonString);
             const jsonResponse = JSON.parse(jsonString);
             if (jsonResponse.type && jsonResponse.content) {
+              console.log('[ChatPage.formatMessage] Successfully parsed manually extracted JSON:', jsonResponse);
               // Split the response into parts: before JSON, JSON, and after JSON
               const beforeJson = text.substring(0, jsonStart).trim();
               const afterJson = text.substring(jsonStart + endIndex + 1).trim();
@@ -452,14 +476,19 @@ export const ChatPage: React.FC = () => {
               );
             }
           } catch (e) {
+            console.warn('[ChatPage.formatMessage] Failed to parse manually extracted JSON string:', e);
             // JSON parsing failed, continue with markdown
           }
+        } else {
+          console.log('[ChatPage.formatMessage] Manual JSON extraction did not find a valid JSON object.');
         }
       }
     } catch (e) {
+      console.warn('[ChatPage.formatMessage] Error during JSON processing:', e);
       // Not JSON, continue with markdown formatting
     }
 
+    console.log('[ChatPage.formatMessage] No structured JSON found or failed to parse, formatting as markdown.');
     // Enhanced formatting for AI responses with comprehensive markdown support
     const lines = text.split('\n');
     const elements: React.ReactNode[] = [];
