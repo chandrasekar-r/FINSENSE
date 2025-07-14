@@ -233,7 +233,6 @@ export const TransactionsPage: React.FC = () => {
       if (editTransaction.vendor_name?.trim()) {
         transactionData.vendor_name = editTransaction.vendor_name.trim()
       }
-      // Don't send vendor_name at all if it's empty (optional field)
 
       console.log('🔍 [TransactionsPage] Updating transaction with data:', transactionData)
 
@@ -290,18 +289,11 @@ export const TransactionsPage: React.FC = () => {
 
   const handleViewTransactionDetails = async (transaction: Transaction) => {
     setSelectedTransaction(transaction)
+    setTransactionDetails(null)
     
-    // Fetch full transaction details including receipt data
     try {
       const response = await transactionAPI.getTransaction(transaction.id)
-      console.log('🔍 [TransactionsPage] Transaction detail response:', response.data)
-      
-      // Backend returns the transaction data directly (not nested)
       const transactionDetailData = response.data?.data || response.data || {}
-      console.log('🔍 [TransactionsPage] Transaction detail data:', transactionDetailData)
-      console.log('🔍 [TransactionsPage] Receipt ID:', transactionDetailData.receipt_id)
-      console.log('🔍 [TransactionsPage] Receipt details:', transactionDetailData.receipt_details)
-      
       setTransactionDetails(transactionDetailData)
     } catch (error) {
       console.error('Failed to fetch transaction details:', error)
@@ -876,91 +868,22 @@ export const TransactionsPage: React.FC = () => {
                       <p className="text-gray-900 dark:text-white">{selectedTransaction.vendor_name || selectedTransaction.merchant_name}</p>
                     </div>
                   )}
-                </div>
-              )}
 
-              {transactionDetails?.receipt_details && (
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                  <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Receipt Information</h4>
-                  
-                  {/* Receipt Data Summary */}
-                  {(() => {
-                    const parsedData = transactionDetails.receipt_details.parsedData || transactionDetails.receipt_details.parsed_data
-                    if (!parsedData) return null
-                    
-                    return (
-                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {(parsedData.merchantName || parsedData.merchant_name) && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
-                              <p className="text-gray-900 dark:text-white text-sm">{parsedData.merchantName || parsedData.merchant_name}</p>
-                            </div>
-                          )}
-                          {(parsedData.totalAmount || parsedData.total_amount) && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Total</label>
-                              <p className="text-gray-900 dark:text-white text-sm">
-                                {parsedData.currency || '$'}{parsedData.totalAmount || parsedData.total_amount}
-                              </p>
-                            </div>
-                          )}
-                          {parsedData.date && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Date</label>
-                              <p className="text-gray-900 dark:text-white text-sm">{parsedData.date}</p>
-                            </div>
-                          )}
-                          {parsedData.confidence && (
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confidence</label>
-                              <p className="text-gray-900 dark:text-white text-sm">{Math.round(parsedData.confidence * 100)}%</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* Receipt Items */}
-                  {(() => {
-                    const parsedData = transactionDetails.receipt_details.parsedData || transactionDetails.receipt_details.parsed_data
-                    const items = parsedData?.items
-                    if (!items || !Array.isArray(items) || items.length === 0) return null
-                    
-                    return (
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Receipt Items</label>
-                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
-                          <div className="space-y-2">
-                            {items.map((item: any, index: number) => (
-                            <div key={index} className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-b-0">
-                              <div className="flex-1">
-                                <span className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</span>
-                                {item.quantity && (
-                                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">×{item.quantity}</span>
-                                )}
-                              </div>
-                              <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                                ${typeof item.amount === 'number' ? item.amount.toFixed(2) : item.price?.toFixed(2) || '0.00'}
-                              </span>
-                            </div>
-                          ))}
+                  {/* Receipt Information Section */}
+                  {transactionDetails?.receipt_details && (
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                      <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Receipt Information</h4>
+                      
+                      {transactionDetails.receipt_details.extractedText && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Extracted Text</label>
+                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
+                            <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+                              {transactionDetails.receipt_details.extractedText}
+                            </pre>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })()}
-
-                  {/* OCR Text */}
-                  {(transactionDetails.receipt_details.extractedText || transactionDetails.receipt_details.extracted_text) && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Extracted Text</label>
-                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
-                        <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                          {transactionDetails.receipt_details.extractedText || transactionDetails.receipt_details.extracted_text}
-                        </pre>
-                      </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -218,7 +218,7 @@ class ResponseFormatter:
         }
     
     def _format_transaction_response(self, raw_response: str, tool_results: List[Dict]) -> Dict[str, Any]:
-        """Format transaction list response."""
+        """Format transaction list response with enhanced analysis."""
         transaction_data = None
         
         # Extract transaction data from tool results
@@ -232,15 +232,110 @@ class ResponseFormatter:
         if not transaction_data:
             return {"type": "text", "content": raw_response}
         
+        # Enhanced processing for better UI display
+        transactions = transaction_data.get('transactions', []) if isinstance(transaction_data, dict) else transaction_data
+        
+        if not transactions:
+            return {"type": "text", "content": raw_response}
+        
+        # Calculate enhanced analytics
+        analytics = self._calculate_transaction_analytics(transactions)
+        
         return {
             "type": "transaction_list",
             "content": {
                 "message": raw_response,
                 "data": {
-                    "transactions": transaction_data
+                    "transactions": transactions,
+                    "analytics": analytics,
+                    "total": len(transactions),
+                    "page": transaction_data.get('page', 1) if isinstance(transaction_data, dict) else 1,
+                    "limit": transaction_data.get('limit', len(transactions)) if isinstance(transaction_data, dict) else len(transactions),
+                    "total_pages": transaction_data.get('total_pages', 1) if isinstance(transaction_data, dict) else 1
                 }
             }
         }
+    
+    def _calculate_transaction_analytics(self, transactions: List[Dict]) -> Dict[str, Any]:
+        """Calculate analytics for transaction data."""
+        if not transactions:
+            return {}
+        
+        try:
+            # Category breakdown
+            category_totals = {}
+            daily_totals = {}
+            total_amount = 0
+            currencies = set()
+            
+            for tx in transactions:
+                amount = float(tx.get('amount', 0))
+                category = tx.get('category_name', 'Unknown')
+                currency = tx.get('currency', 'USD')
+                date_str = tx.get('transaction_date', '')
+                
+                total_amount += amount
+                currencies.add(currency)
+                
+                # Category breakdown
+                if category in category_totals:
+                    category_totals[category]['amount'] += amount
+                    category_totals[category]['count'] += 1
+                else:
+                    category_totals[category] = {'amount': amount, 'count': 1}
+                
+                # Daily breakdown
+                if date_str:
+                    try:
+                        # Extract date part only (YYYY-MM-DD)
+                        date_part = date_str.split('T')[0] if 'T' in date_str else date_str.split(' ')[0]
+                        if date_part in daily_totals:
+                            daily_totals[date_part]['amount'] += amount
+                            daily_totals[date_part]['count'] += 1
+                        else:
+                            daily_totals[date_part] = {'amount': amount, 'count': 1}
+                    except Exception:
+                        pass
+            
+            # Format category data
+            category_breakdown = []
+            for category, data in category_totals.items():
+                percentage = (data['amount'] / total_amount * 100) if total_amount > 0 else 0
+                category_breakdown.append({
+                    'category': category,
+                    'amount': data['amount'],
+                    'count': data['count'],
+                    'percentage': round(percentage, 2)
+                })
+            
+            # Sort by amount descending
+            category_breakdown.sort(key=lambda x: x['amount'], reverse=True)
+            
+            # Format daily data
+            daily_breakdown = []
+            for date, data in sorted(daily_totals.items()):
+                daily_breakdown.append({
+                    'date': date,
+                    'amount': data['amount'],
+                    'count': data['count']
+                })
+            
+            return {
+                'total_amount': total_amount,
+                'transaction_count': len(transactions),
+                'average_amount': total_amount / len(transactions) if transactions else 0,
+                'currencies': list(currencies),
+                'category_breakdown': category_breakdown,
+                'daily_breakdown': daily_breakdown,
+                'date_range': {
+                    'start': min(tx.get('transaction_date', '') for tx in transactions if tx.get('transaction_date')),
+                    'end': max(tx.get('transaction_date', '') for tx in transactions if tx.get('transaction_date'))
+                } if transactions else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating transaction analytics: {e}")
+            return {'error': 'Failed to calculate analytics'}
     
     def _format_receipt_response(self, raw_response: str, tool_results: List[Dict]) -> Dict[str, Any]:
         """Format receipt details response."""

@@ -145,7 +145,7 @@ class DeepSeekService(BaseAIService):
                     
                     on_chunk(f"✅ Found your {tool_call['function']['name'].replace('get_', '').replace('_', ' ')} data\n\n")
                 
-                on_chunk("📊 Analyzing your data...\n\n")
+                on_chunk("Analyzing ...\n\n")
                 await self._stream_final_response(
                     system_prompt, user_message, initial_response["content"], tool_results, on_chunk, history
                 )
