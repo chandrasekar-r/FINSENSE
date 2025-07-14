@@ -1,0 +1,112 @@
+"""Prompt building utilities for financial AI queries."""
+
+from typing import Dict, Any, List
+from src.utils.logger import logger
+
+
+class PromptBuilder:
+    """Builds prompts for financial AI queries."""
+    
+    def build_financial_prompt(self, message: str, context: Dict[str, Any]) -> str:
+        """Build system prompt for financial queries."""
+        return f"""
+You are a financial advisor AI assistant with the ability to read and modify user's financial data.
+
+User's Financial Context:
+- Total spending this month: ${context.get('totalSpending', 0)}
+- Number of recent transactions: {len(context.get('recentTransactions', []))}
+- Active budgets: {len(context.get('budgets', []))}
+- Categories: {', '.join([f"{c.get('name', 'Unknown')} (ID: {c.get('id', 'unknown')})" for c in context.get('categories', [])])}
+
+Recent Transactions:
+{chr(10).join([
+    f"- ${t.get('amount', 0)} at {t.get('merchant_name', t.get('description', 'Unknown'))} ({t.get('category_name', 'Unknown')}) on {t.get('transaction_date', 'Unknown')}"
+    for t in context.get('recentTransactions', [])[:5]
+])}
+
+Active Budgets:
+{chr(10).join([
+    f"- {b.get('name', 'Unknown')}: {b.get('currency', '$')} {b.get('amount', 0)} budget ({b.get('category_name', 'Unknown')})"
+    for b in context.get('budgets', [])
+])}
+
+User Question: {message}
+
+You can help the user by analyzing their financial data and providing insights.
+"""
+    
+    def build_financial_system_prompt(self, context: Dict[str, Any]) -> str:
+        """Build system prompt for streaming financial queries."""
+        try:
+            # Safely get data from context
+            total_spending = context.get('totalSpending', 0)
+            recent_transactions = context.get('recentTransactions', [])
+            budgets = context.get('budgets', [])
+            categories = context.get('categories', [])
+            
+            # Safely slice recent transactions
+            recent_transactions_limited = list(recent_transactions)[:5] if recent_transactions else []
+            
+            # Build transaction strings safely
+            transaction_strings = []
+            for i, t in enumerate(recent_transactions_limited):
+                try:
+                    # Handle if transaction is a dict
+                    if isinstance(t, dict):
+                        amount = t.get('amount', 0)
+                        merchant = t.get('merchant_name', t.get('vendor_name', t.get('description', 'Unknown')))
+                        category = t.get('category_name', 'Unknown')
+                        date = t.get('transaction_date', 'Unknown')
+                        tx_str = f"- ${amount} at {merchant} ({category}) on {date}"
+                    else:
+                        # If it's not a dict, convert to string representation
+                        tx_str = f"- Transaction {i}: {str(t)}"
+                    
+                    transaction_strings.append(tx_str)
+                except Exception as e:
+                    logger.error(f"DeepSeek: Error building transaction string {i}: {e}")
+                    transaction_strings.append(f"- Transaction {i}: Error processing")
+            
+            # Build budget strings safely
+            budget_strings = []
+            for i, b in enumerate(budgets):
+                try:
+                    budget_str = f"- {b.get('name', 'Unknown')}: ${b.get('amount', 0)} budget ({b.get('category_name', 'Unknown')})"
+                    budget_strings.append(budget_str)
+                except Exception as e:
+                    logger.error(f"DeepSeek: Error building budget string {i}: {e}")
+                    budget_strings.append(f"- Budget {i}: Error processing")
+            
+            # Build category strings safely
+            category_strings = []
+            for i, c in enumerate(categories):
+                try:
+                    cat_str = f"{c.get('name', 'Unknown')} (ID: {c.get('id', 'unknown')})"
+                    category_strings.append(cat_str)
+                except Exception as e:
+                    logger.error(f"DeepSeek: Error building category string {i}: {e}")
+                    category_strings.append(f"Category {i}: Error processing")
+            
+            prompt = f"""You are a financial advisor AI assistant with the ability to read and modify user's financial data.
+
+User's Financial Context:
+- Total spending this month: ${total_spending}
+- Number of recent transactions: {len(recent_transactions)}
+- Active budgets: {len(budgets)}
+- Categories: {', '.join(category_strings)}
+
+Recent Transactions:
+{chr(10).join(transaction_strings)}
+
+Active Budgets:
+{chr(10).join(budget_strings)}
+
+You can help the user by analyzing their financial data and providing insights. Provide clear, conversational responses explaining the data and offering helpful advice. The system will automatically format structured data responses for better presentation.
+"""
+            
+            return prompt
+            
+        except Exception as e:
+            logger.error(f"DeepSeek: Error building system prompt: {e}")
+            # Return a simple fallback prompt
+            return "You are a financial advisor AI assistant. Help the user with their financial questions."

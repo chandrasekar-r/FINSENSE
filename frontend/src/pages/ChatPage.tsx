@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { chatAPI, ChatMessage } from '../lib/api'
+import { useCurrency } from '../contexts/CurrencyContext'
 
 export const ChatPage: React.FC = () => {
+  const { currencySymbol, formatAmount } = useCurrency()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [isLoading] = useState(false)
@@ -10,6 +12,7 @@ export const ChatPage: React.FC = () => {
   const [streamingResponse, setStreamingResponse] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingPhase, setStreamingPhase] = useState<'thinking' | 'searching' | 'analyzing' | 'responding'>('thinking')
+  const [statusMessage, setStatusMessage] = useState('')
   const [recommendations, setRecommendations] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const cleanupStreamRef = useRef<(() => void) | null>(null)
@@ -18,14 +21,15 @@ export const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+
   const detectStreamingPhase = (content: string) => {
-    if (content.includes('🔍 Looking up')) {
+    if (content.includes('🔍') || content.includes('Looking up')) {
       return 'searching'
-    } else if (content.includes('✅ Found')) {
-      return 'searching'
-    } else if (content.includes('📊 Analyzing')) {
+    } else if (content.includes('✅') || content.includes('Found')) {
+      return 'responding'
+    } else if (content.includes('📊') || content.includes('Analyzing') || content.includes('formatting')) {
       return 'analyzing'
-    } else if (content.includes('{') || content.includes('"type"')) {
+    } else if (content.includes('{') || content.includes('"type"') || content.length > 100) {
       return 'responding'
     }
     return 'thinking'
@@ -40,12 +44,12 @@ export const ChatPage: React.FC = () => {
       },
       searching: {
         icon: '🔍',
-        text: 'Searching your data...',
+        text: 'Looking up your financial data...',
         color: 'text-blue-500 dark:text-blue-400'
       },
       analyzing: {
         icon: '📊',
-        text: 'Analyzing and formatting...',
+        text: 'Analyzing and formatting results...',
         color: 'text-purple-500 dark:text-purple-400'
       },
       responding: {
@@ -136,6 +140,7 @@ export const ChatPage: React.FC = () => {
     setIsStreaming(true)
     setStreamingResponse('')
     setStreamingPhase('thinking')
+    setStatusMessage('')
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -159,10 +164,11 @@ export const ChatPage: React.FC = () => {
         })
       },
       // onComplete
-      (fullResponse: string) => {
+      async (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
         setStreamingPhase('thinking')
+        setStatusMessage('')
         
         // Update with complete response
         setMessages(prev => [
@@ -186,12 +192,27 @@ export const ChatPage: React.FC = () => {
         setIsStreaming(false)
         setStreamingResponse('')
         setStreamingPhase('thinking')
+        setStatusMessage('')
         setError(errorMessage)
         
         // Remove the temp message on error
         setMessages(prev => prev.slice(0, -1))
         
         cleanupStreamRef.current = null
+      },
+      // onStatus
+      (status: string) => {
+        setStatusMessage(status)
+        // Update streaming phase based on status message
+        if (status.includes('🔍') || status.includes('Looking up')) {
+          setStreamingPhase('searching')
+        } else if (status.includes('📊') || status.includes('Analyzing') || status.includes('formatting')) {
+          setStreamingPhase('analyzing')
+        } else if (status.includes('✅') || status.includes('Found')) {
+          setStreamingPhase('responding')
+        } else if (status.includes('Thinking')) {
+          setStreamingPhase('thinking')
+        }
       }
     )
   }
@@ -215,7 +236,21 @@ export const ChatPage: React.FC = () => {
   const loadChatHistory = async () => {
     try {
       const response = await chatAPI.getChatHistory({ limit: 50 })
-      const chatMessages = response.data.data.messages.reverse() // Reverse to show oldest first
+      console.log('🔍 [ChatPage] Chat history response:', response.data)
+      
+      // Handle different response structures
+      const responseData = response.data?.data || response.data || {}
+      const messages = responseData.messages || responseData || []
+      
+      // Map backend field names to frontend interface
+      const chatMessages = Array.isArray(messages) ? messages.map(msg => ({
+        id: msg.id,
+        user_message: msg.message || msg.user_message,
+        ai_response: msg.response || msg.ai_response,
+        created_at: msg.created_at
+      })).reverse() : [] // Reverse to show oldest first
+      
+      console.log('🔍 [ChatPage] Processed chat messages:', chatMessages)
       setMessages(chatMessages)
       
       // If there are messages, generate recommendations based on the last conversation
@@ -244,6 +279,7 @@ export const ChatPage: React.FC = () => {
     setIsStreaming(true)
     setStreamingResponse('')
     setStreamingPhase('thinking')
+    setStatusMessage('')
     setRecommendations([]) // Clear current recommendations
 
     // Add user message to chat immediately
@@ -267,7 +303,7 @@ export const ChatPage: React.FC = () => {
         })
       },
       // onComplete
-      (fullResponse: string) => {
+      async (fullResponse: string) => {
         setIsStreaming(false)
         setStreamingResponse('')
         setStreamingPhase('thinking')
@@ -294,12 +330,27 @@ export const ChatPage: React.FC = () => {
         setIsStreaming(false)
         setStreamingResponse('')
         setStreamingPhase('thinking')
+        setStatusMessage('')
         setError(errorMessage)
         
         // Remove the temp message on error
         setMessages(prev => prev.slice(0, -1))
         
         cleanupStreamRef.current = null
+      },
+      // onStatus
+      (status: string) => {
+        setStatusMessage(status)
+        // Update streaming phase based on status message
+        if (status.includes('🔍') || status.includes('Looking up')) {
+          setStreamingPhase('searching')
+        } else if (status.includes('📊') || status.includes('Analyzing') || status.includes('formatting')) {
+          setStreamingPhase('analyzing')
+        } else if (status.includes('✅') || status.includes('Found')) {
+          setStreamingPhase('responding')
+        } else if (status.includes('Thinking')) {
+          setStreamingPhase('thinking')
+        }
       }
     )
   }
@@ -331,132 +382,50 @@ export const ChatPage: React.FC = () => {
     setShowClearModal(false)
   }
 
-  const formatMessage = (text: string) => {
-    // Check if the response contains JSON structured data
+  const formatMessage = (text: string, isStreaming: boolean = false) => {
+    console.log('🎨 formatMessage called with:', { 
+      textLength: text.length, 
+      isStreaming, 
+      textStart: text.substring(0, 100) 
+    });
+    
+    // During streaming, don't try to parse JSON - just show the text as-is
+    if (isStreaming) {
+      return formatInlineText(text);
+    }
+    
+    // Try to parse as structured JSON response (backend-processed)
     try {
-      // First, try to parse the entire text as JSON
       const trimmedText = text.trim();
-      if (trimmedText.startsWith('{') && trimmedText.endsWith('}')) {
-        const jsonResponse = JSON.parse(trimmedText);
-        if (jsonResponse.type && jsonResponse.content) {
-          return renderStructuredResponse(jsonResponse);
-        }
-      }
-      
-      // Then, try to find JSON-like structure embedded in the text
-      const jsonPatterns = [
-        /\{"type":\s*"[^"]+",\s*"content":\s*\{[^}]*\}[^}]*\}/g,
-        /\{"type":[^}]*\}/g
-      ];
-      
-      for (const pattern of jsonPatterns) {
-        const matches = text.match(pattern);
-        if (matches) {
-          for (const match of matches) {
-            try {
-              const jsonResponse = JSON.parse(match);
-              if (jsonResponse.type && jsonResponse.content) {
-                // Split the response into parts: before JSON, JSON, and after JSON
-                const beforeJson = text.substring(0, text.indexOf(match)).trim();
-                const afterJson = text.substring(text.indexOf(match) + match.length).trim();
-                
-                return (
-                  <div className="space-y-4">
-                    {beforeJson && (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {formatInlineText(beforeJson)}
-                      </div>
-                    )}
-                    {renderStructuredResponse(jsonResponse)}
-                    {afterJson && (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {formatInlineText(afterJson)}
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-            } catch (e) {
-              // Continue to next match
-            }
-          }
-        }
-      }
-      
-      // Manual JSON extraction with proper brace counting
-      const jsonStart = text.indexOf('{"type":');
-      if (jsonStart !== -1) {
-        // Extract potential JSON from the first opening brace to the end
-        const potentialJson = text.substring(jsonStart);
+      if (trimmedText.startsWith('{')) {
+        console.log('🎨 Attempting to parse JSON response');
+        console.log('🎨 Text to parse:', trimmedText.substring(0, 100) + '...');
         
-        // Try to find the complete JSON object
+        // Try to find the end of the JSON object
         let braceCount = 0;
-        let endIndex = -1;
-        let inString = false;
-        let escapeNext = false;
-        
-        for (let i = 0; i < potentialJson.length; i++) {
-          const char = potentialJson[i];
-          
-          if (escapeNext) {
-            escapeNext = false;
-            continue;
-          }
-          
-          if (char === '\\') {
-            escapeNext = true;
-            continue;
-          }
-          
-          if (char === '"') {
-            inString = !inString;
-            continue;
-          }
-          
-          if (!inString) {
-            if (char === '{') {
-              braceCount++;
-            } else if (char === '}') {
-              braceCount--;
-              if (braceCount === 0) {
-                endIndex = i;
-                break;
-              }
-            }
+        let jsonEndIndex = -1;
+        for (let i = 0; i < trimmedText.length; i++) {
+          if (trimmedText[i] === '{') braceCount++;
+          if (trimmedText[i] === '}') braceCount--;
+          if (braceCount === 0) {
+            jsonEndIndex = i;
+            break;
           }
         }
         
-        if (endIndex !== -1) {
-          try {
-            const jsonString = potentialJson.substring(0, endIndex + 1);
-            const jsonResponse = JSON.parse(jsonString);
-            if (jsonResponse.type && jsonResponse.content) {
-              // Split the response into parts: before JSON, JSON, and after JSON
-              const beforeJson = text.substring(0, jsonStart).trim();
-              const afterJson = text.substring(jsonStart + endIndex + 1).trim();
-              
-              return (
-                <div className="space-y-4">
-                  {beforeJson && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {formatInlineText(beforeJson)}
-                    </div>
-                  )}
-                  {renderStructuredResponse(jsonResponse)}
-                  {afterJson && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {formatInlineText(afterJson)}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-          } catch (e) {
-            // JSON parsing failed, continue with markdown
+        if (jsonEndIndex > 0) {
+          const jsonText = trimmedText.substring(0, jsonEndIndex + 1);
+          const jsonResponse = JSON.parse(jsonText);
+          console.log('🎨 Parsed JSON:', jsonResponse);
+          if (jsonResponse.type && jsonResponse.content) {
+            console.log('🎨 Rendering structured response of type:', jsonResponse.type);
+            return renderStructuredResponse(jsonResponse);
           }
         }
       }
     } catch (e) {
+      console.log('🎨 JSON parsing failed:', e);
+      console.log('🎨 Failed text:', text.substring(0, 200) + '...');
       // Not JSON, continue with markdown formatting
     }
 
@@ -627,7 +596,7 @@ export const ChatPage: React.FC = () => {
 
   const renderBudgetBreakdown = (content: any) => {
     const { message, data } = content;
-    const { total_spent, total_budgeted, remaining_budget, currency, budgets, overall_status } = data;
+    const { total_spent, total_budgeted, remaining_budget, budgets, overall_status } = data;
     
     return (
       <div className="space-y-4">
@@ -641,26 +610,26 @@ export const ChatPage: React.FC = () => {
         {total_budgeted !== undefined && (
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
             <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
-              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">€</span>
+              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">{currencySymbol}</span>
               Overall Budget Performance
             </h4>
             
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {currency || 'EUR'} {total_budgeted}
+                  {formatAmount(total_budgeted)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Total Budget</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {currency || 'EUR'} {total_spent}
+                  {formatAmount(total_spent)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Total Spent</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {currency || 'EUR'} {remaining_budget}
+                  {formatAmount(remaining_budget)}
                 </div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">Remaining</div>
               </div>
@@ -684,7 +653,7 @@ export const ChatPage: React.FC = () => {
         
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
           <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
-            <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">€</span>
+            <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">{currencySymbol}</span>
             Budget Details
           </h4>
           
@@ -717,14 +686,14 @@ export const ChatPage: React.FC = () => {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-400">Spent:</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {currency} {budget.spent} / {currency} {budget.budget_amount}
+                      {formatAmount(budget.spent)} / {formatAmount(budget.budget_amount)}
                     </span>
                   </div>
                   
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-400">Remaining:</span>
                     <span className="font-medium text-green-600 dark:text-green-400">
-                      {currency} {budget.remaining}
+                      {formatAmount(budget.remaining)}
                     </span>
                   </div>
                   
@@ -750,7 +719,7 @@ export const ChatPage: React.FC = () => {
             <div className="mt-4 pt-3 border-t border-blue-200 dark:border-blue-700">
               <div className="flex justify-between items-center font-semibold text-blue-900 dark:text-blue-100">
                 <span>Total Spent This Month:</span>
-                <span>{currency} {total_spent}</span>
+                <span>{formatAmount(total_spent)}</span>
               </div>
             </div>
           )}
@@ -760,8 +729,8 @@ export const ChatPage: React.FC = () => {
   };
 
   const renderSpendingAnalysis = (content: any) => {
-    const { message, data } = content;
-    const { total_spent, currency, period, breakdown } = data;
+    const { message, data, suggestions } = content;
+    const { total_spent, period, breakdown, budget_status } = data;
     
     return (
       <div className="space-y-4">
@@ -774,11 +743,11 @@ export const ChatPage: React.FC = () => {
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
           <h4 className="font-semibold text-green-900 dark:text-green-100 mb-3 flex items-center">
             <span className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center text-white text-sm mr-2">📊</span>
-            Spending Analysis: {currency} {total_spent} ({period})
+            Spending Analysis: {formatAmount(total_spent)} ({period})
           </h4>
           
           <div className="space-y-2">
-            {breakdown.map((item: any, index: number) => (
+            {breakdown && breakdown.map((item: any, index: number) => (
               <div key={index} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-md border border-green-100 dark:border-green-800">
                 <div className="flex items-center flex-1">
                   <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
@@ -788,7 +757,7 @@ export const ChatPage: React.FC = () => {
                 </div>
                 <div className="text-right">
                   <span className="font-semibold text-green-600 dark:text-green-400">
-                    {currency} {item.amount}
+                    {formatAmount(item.amount)}
                   </span>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     {item.percentage.toFixed(1)}%
@@ -809,17 +778,78 @@ export const ChatPage: React.FC = () => {
           <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
             <div className="flex justify-between items-center font-semibold text-green-900 dark:text-green-100">
               <span>Total Spent ({period}):</span>
-              <span>{currency} {total_spent}</span>
+              <span>{formatAmount(total_spent)}</span>
             </div>
           </div>
         </div>
+
+        {/* Budget Status Section */}
+        {budget_status && budget_status.length > 0 && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-3 flex items-center">
+              <span className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm mr-2">🎯</span>
+              Budget Status
+            </h4>
+            
+            <div className="space-y-3">
+              {budget_status.map((budget: any, index: number) => (
+                <div key={index} className="p-3 bg-white dark:bg-gray-800 rounded-md border border-blue-100 dark:border-blue-800">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {budget.budget}
+                    </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      {budget.percentage_used.toFixed(1)}% used
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <span>Spent: {formatAmount(budget.spent)}</span>
+                    <span>Remaining: {formatAmount(budget.remaining)}</span>
+                  </div>
+                  
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        budget.percentage_used > 90 ? 'bg-red-500' :
+                        budget.percentage_used > 70 ? 'bg-yellow-500' : 'bg-blue-500'
+                      }`}
+                      style={{ width: `${Math.min(budget.percentage_used, 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Suggestions Section */}
+        {suggestions && suggestions.length > 0 && (
+          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+            <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-3 flex items-center">
+              <span className="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center text-white text-sm mr-2">💡</span>
+              Suggestions
+            </h4>
+            
+            <div className="space-y-2">
+              {suggestions.map((suggestion: string, index: number) => (
+                <div key={index} className="flex items-start space-x-2 p-2 bg-white dark:bg-gray-800 rounded-md border border-purple-100 dark:border-purple-800">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {suggestion}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
   const renderReceiptDetails = (content: any) => {
     const { message, data } = content;
-    const { merchant, date, total_amount, currency, items } = data;
+    const { merchant, date, total_amount, items } = data;
     
     return (
       <div className="space-y-4">
@@ -858,7 +888,7 @@ export const ChatPage: React.FC = () => {
                 </div>
                 <div className="text-right">
                   <span className="font-semibold text-purple-600 dark:text-purple-400">
-                    {currency} {typeof item.amount === 'number' ? item.amount.toFixed(2) : item.amount}
+                    {formatAmount(item.amount)}
                   </span>
                 </div>
               </div>
@@ -869,7 +899,7 @@ export const ChatPage: React.FC = () => {
             <div className="flex justify-between items-center font-semibold text-purple-900 dark:text-purple-100">
               <span>Total:</span>
               <span className="text-lg">
-                {currency} {typeof total_amount === 'number' ? total_amount.toFixed(2) : total_amount}
+                {formatAmount(total_amount)}
               </span>
             </div>
           </div>
@@ -1123,7 +1153,7 @@ export const ChatPage: React.FC = () => {
                   {/* AI Response */}
                   {message.ai_response && (
                     <div className="flex justify-start">
-                      <div className="max-w-3xl bg-white dark:bg-gray-800 rounded-lg px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700">
+                      <div className="max-w-3xl bg-white dark:bg-gray-800 rounded-lg px-6 py-4 shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
                         <div className="prose prose-sm dark:prose-invert max-w-none">
                           {formatMessage(message.ai_response)}
                         </div>
@@ -1140,7 +1170,7 @@ export const ChatPage: React.FC = () => {
                     <div className="prose prose-sm dark:prose-invert max-w-none">
                       {streamingResponse ? (
                         <>
-                          {formatMessage(streamingResponse)}
+                          {formatMessage(streamingResponse, true)}
                           <span className="inline-block w-2 h-4 bg-blue-500 dark:bg-blue-400 ml-1 animate-pulse rounded"></span>
                         </>
                       ) : (
@@ -1152,7 +1182,7 @@ export const ChatPage: React.FC = () => {
                           </div>
                           <span className={`flex items-center space-x-2 ${getStreamingIndicator().color}`}>
                             <span>{getStreamingIndicator().icon}</span>
-                            <span>{getStreamingIndicator().text}</span>
+                            <span>{statusMessage || getStreamingIndicator().text}</span>
                           </span>
                         </div>
                       )}

@@ -2,3 +2,7 @@ node_modules
 docker-compose.yml 
 dist/
 
+logs/combined.log
+logs/error.log
+logs/combined.log
+logs/error.log

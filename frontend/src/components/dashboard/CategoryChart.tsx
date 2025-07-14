@@ -4,10 +4,8 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  Tooltip,
-  Legend
+  Tooltip
 } from 'recharts'
-import { useTheme } from '../../contexts/ThemeContext'
 import { useUserCurrency } from '../../stores/authStore'
 import { formatCurrency } from '../../lib/utils'
 
@@ -77,10 +75,12 @@ const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
 }
 
 export const CategoryChart: React.FC<CategoryChartProps> = ({ data, className }) => {
-  const { theme } = useTheme()
+  console.log('🔍 [CategoryChart] Received data:', data)
+  console.log('🔍 [CategoryChart] Data length:', data.length)
   
   // Calculate total for percentage calculation
   const total = data.reduce((sum, item) => sum + item.value, 0)
+  console.log('🔍 [CategoryChart] Total calculated:', total)
   const dataWithTotal = data.map(item => ({ ...item, total }))
 
   return (

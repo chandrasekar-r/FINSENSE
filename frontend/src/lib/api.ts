@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3000/api'
+const API_BASE_URL = '/api'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -36,11 +36,53 @@ api.interceptors.response.use(
   (response) => {
     return response
   },
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized - clear auth and redirect to login
+  async (error) => {
+    const originalRequest = error.config
+    
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true
+      
+      try {
+        // Try to refresh the token
+        const authData = localStorage.getItem('auth-storage')
+        if (authData) {
+          const { state } = JSON.parse(authData)
+          if (state?.refreshToken) {
+            // Make refresh request
+            const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+              refresh_token: state.refreshToken
+            })
+            
+            const newTokens = refreshResponse.data
+            
+            // Update the stored auth data
+            const updatedAuthData = {
+              ...JSON.parse(authData),
+              state: {
+                ...state,
+                token: newTokens.access_token,
+                refreshToken: newTokens.refresh_token
+              }
+            }
+            localStorage.setItem('auth-storage', JSON.stringify(updatedAuthData))
+            
+            // Notify auth store to sync tokens
+            window.dispatchEvent(new CustomEvent('tokens-refreshed'))
+            
+            // Update the original request with new token
+            originalRequest.headers.Authorization = `Bearer ${newTokens.access_token}`
+            
+            // Retry the original request
+            return api(originalRequest)
+          }
+        }
+      } catch (refreshError) {
+        console.log('Token refresh failed:', refreshError)
+      }
+      
+      // If refresh fails or no refresh token, handle auth expiration
       localStorage.removeItem('auth-storage')
-      window.location.href = '/login'
+      window.dispatchEvent(new CustomEvent('auth-expired'))
     }
     
     return Promise.reject(error)
@@ -65,13 +107,47 @@ export interface Transaction {
   amount: number
   description: string
   transaction_date: string
-  merchant_name?: string
+  vendor_name?: string
+  merchant_name?: string // Legacy field for backwards compatibility
   transaction_type: 'income' | 'expense'
   category_name?: string
   category_color?: string
   category_icon?: string
   created_at: string
   updated_at: string
+  receipt_id?: string
+  receipt_details?: {
+    extractedText?: string
+    extracted_text?: string
+    parsedData?: {
+      merchantName?: string
+      totalAmount?: number
+      currency?: string
+      date?: string
+      category?: string
+      items?: Array<{
+        name: string
+        amount: number
+        quantity?: number
+        category?: string
+      }>
+      confidence: number
+    }
+    parsed_data?: {
+      merchantName?: string
+      totalAmount?: number
+      currency?: string
+      date?: string
+      category?: string
+      items?: Array<{
+        name: string
+        amount: number
+        quantity?: number
+        category?: string
+      }>
+      confidence: number
+    }
+  }
 }
 
 export interface Category {
@@ -99,6 +175,14 @@ export interface Budget {
   category_name?: string
   category_color?: string
   category_icon?: string
+  // Backend fields (snake_case)
+  budget_amount?: string
+  spent_amount?: string
+  remaining_amount?: string
+  percentage_used?: number
+  days_remaining?: number
+  alert_triggered?: boolean
+  // Legacy frontend fields (camelCase) - for backwards compatibility
   budgetAmount?: number
   spentAmount?: number
   remainingAmount?: number
@@ -165,7 +249,19 @@ export const transactionAPI = {
     startDate?: string
     endDate?: string
     type?: string
-  }) => api.get('/transactions', { params }),
+  }) => {
+    // Map frontend filter names to backend expected names
+    const mappedParams: any = {}
+    if (params) {
+      if (params.page !== undefined) mappedParams.page = params.page
+      if (params.limit !== undefined) mappedParams.limit = params.limit
+      if (params.category && params.category.trim() !== '') mappedParams.category_id = params.category
+      if (params.startDate && params.startDate.trim() !== '') mappedParams.start_date = params.startDate
+      if (params.endDate && params.endDate.trim() !== '') mappedParams.end_date = params.endDate
+      if (params.type && params.type.trim() !== '') mappedParams.transaction_type = params.type
+    }
+    return api.get('/transactions', { params: mappedParams })
+  },
   
   createTransaction: (data: {
     category_id: string
@@ -194,7 +290,7 @@ export const transactionAPI = {
 export const receiptAPI = {
   uploadReceipt: (file: File) => {
     const formData = new FormData()
-    formData.append('receipt', file)
+    formData.append('file', file)
     return api.post('/receipts/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -207,7 +303,7 @@ export const receiptAPI = {
   confirmReceiptData: (id: string, confirmedData: any) => 
     api.put(`/receipts/${id}/confirm`, { confirmedData }),
   
-  getProgress: (jobId: string) => api.get(`/receipts/progress/${jobId}`),
+  getProgress: (processingId: string) => api.get(`/receipts/${processingId}`),
 }
 
 // Chat
@@ -215,7 +311,7 @@ export const chatAPI = {
   sendMessage: (message: string) => 
     api.post('/chat/query', { message }),
   
-  sendMessageStream: (message: string, onChunk: (chunk: string) => void, onComplete: (fullResponse: string) => void, onError: (error: string) => void): (() => void) => {
+  sendMessageStream: (message: string, onChunk: (chunk: string) => void, onComplete: (fullResponse: string) => void, onError: (error: string) => void, onStatus?: (status: string) => void): (() => void) => {
     const authData = localStorage.getItem('auth-storage')
     let token = ''
     
@@ -271,6 +367,16 @@ export const chatAPI = {
                   case 'connected':
                     // Connection established
                     break
+                  case 'status':
+                    if (onStatus) onStatus(data.message)
+                    break
+                  case 'structured':
+                    // Handle structured response - convert to JSON string for compatibility
+                    console.log('📊 Received structured response:', data.data)
+                    const structuredResponse = JSON.stringify(data.data)
+                    console.log('📊 Converted to JSON string:', structuredResponse.substring(0, 200) + '...')
+                    onComplete(structuredResponse)
+                    return
                   case 'chunk':
                     onChunk(data.content)
                     break

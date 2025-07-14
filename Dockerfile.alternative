@@ -1,0 +1,57 @@
+# Alternative Dockerfile if the main one fails
+FROM python:3.11-slim-bullseye
+
+# Set working directory
+WORKDIR /app
+
+# Update package lists and install dependencies with retry logic
+RUN for i in 1 2 3 4 5; do \
+        apt-get update --fix-missing && \
+        apt-get install -y --no-install-recommends \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            libtesseract-dev \
+            libleptonica-dev \
+            pkg-config \
+            libglib2.0-0 \
+            curl \
+            ca-certificates \
+            build-essential \
+        && break || sleep 15; \
+    done && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Node.js for building frontend
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs
+
+# Copy frontend source
+COPY frontend/ ./frontend/
+
+# Build frontend
+WORKDIR /app/frontend
+RUN npm install && npm run build
+
+# Go back to app directory and copy Python source
+WORKDIR /app
+COPY . .
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Run the application with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]

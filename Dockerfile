@@ -1,20 +1,51 @@
-FROM node:18-alpine
+FROM python:3.11-alpine
 
-RUN apk add --no-cache curl
-
+# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Alpine doesn't use apt, so remove this line
 
-# Install dependencies
-RUN npm install 
+RUN apk add --no-cache \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    tesseract-ocr-dev \
+    leptonica-dev \
+    pkgconf \
+    g++ \
+    mesa-gl \
+    glib \
+    libsm \
+    libxext \
+    libxrender-dev \
+    libgomp \
+    curl \
+    ca-certificates \
+    tesseract-ocr-data-deu
 
-# Copy all necessary files for build
-COPY . .
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Build the application
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Node.js for building frontend
+RUN apk add --no-cache nodejs npm
+
+# Install Tesseract.js
+RUN npm install tesseract.js --prefix /app
+
+# Copy frontend source (including package-lock.json)
+COPY frontend/package*.json ./frontend/
+COPY frontend/ ./frontend/
+
+# Build frontend
+WORKDIR /app/frontend
+RUN npm ci
 RUN npm run build
+
+# Go back to app directory and copy Python source
+WORKDIR /app
+COPY . .
 
 # Create logs directory
 RUN mkdir -p logs
@@ -23,8 +54,8 @@ RUN mkdir -p logs
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the application
-CMD ["npm", "start"]
+# Run the application with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]

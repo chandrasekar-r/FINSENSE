@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
-import { receiptAPI, ReceiptData, categoryAPI, Category } from '../lib/api'
+import { receiptAPI, ReceiptData } from '../lib/api'
+import { useCategoryStore } from '../stores/categoryStore'
 
 interface ProcessedReceipt {
   id: string
@@ -11,6 +12,7 @@ interface ProcessedReceipt {
   confirmedData?: any
   error?: string
   progress?: number
+  progressMessage?: string
 }
 
 const STORAGE_KEY = 'finsense-receipt-queue'
@@ -19,8 +21,8 @@ export const ReceiptScanPage: React.FC = () => {
   const [receipts, setReceipts] = useState<ProcessedReceipt[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [, setCategories] = useState<Category[]>([])
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const { categories, fetchCategories, findOrCreateCategory } = useCategoryStore()
 
   // Load receipts from localStorage on component mount
   useEffect(() => {
@@ -28,12 +30,14 @@ export const ReceiptScanPage: React.FC = () => {
     if (savedReceipts) {
       try {
         const parsedReceipts = JSON.parse(savedReceipts)
-        // Recreate File objects from saved data
-        const receiptsWithFiles = parsedReceipts.map((receipt: any) => ({
-          ...receipt,
-          file: new File([], receipt.fileName, { type: 'image/jpeg' }) // Placeholder file
-        }))
-        setReceipts(receiptsWithFiles)
+        // Only restore completed receipts (they don't need file data anymore)
+        const completedReceipts = parsedReceipts
+          .filter((receipt: any) => receipt.status === 'completed')
+          .map((receipt: any) => ({
+            ...receipt,
+            file: new File([], receipt.fileName, { type: 'image/jpeg' }) // Placeholder file for completed receipts
+          }))
+        setReceipts(completedReceipts)
       } catch (error) {
         console.error('Failed to load saved receipts:', error)
         localStorage.removeItem(STORAGE_KEY)
@@ -41,23 +45,71 @@ export const ReceiptScanPage: React.FC = () => {
     }
     
     // Load categories
-    fetchCategories()
+    if (categories.length === 0) {
+      fetchCategories()
+    }
   }, [])
 
-  const fetchCategories = async () => {
+  // Auto-hide notifications after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null)
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [notification])
+
+  // Function to automatically create categories from OCR extracted data
+  const autoCreateCategoriesFromOCR = async (receiptData: ReceiptData) => {
     try {
-      const response = await categoryAPI.getCategories()
-      setCategories(response.data.data || [])
+      const categoriesToCreate = new Set<string>()
+      
+      // Extract main category from parsed data
+      if (receiptData.parsedData?.category && receiptData.parsedData.category.trim()) {
+        categoriesToCreate.add(receiptData.parsedData.category.trim())
+      }
+      
+      // Extract categories from individual items
+      if (receiptData.parsedData?.items && Array.isArray(receiptData.parsedData.items)) {
+        receiptData.parsedData.items.forEach(item => {
+          if (item.category && item.category.trim()) {
+            categoriesToCreate.add(item.category.trim())
+          }
+        })
+      }
+      
+      // Create categories automatically
+      const createdCategories = []
+      for (const categoryName of categoriesToCreate) {
+        try {
+          const category = await findOrCreateCategory(
+            categoryName,
+            '#3B82F6', // Default blue color
+            '📁' // Default folder icon
+          )
+          createdCategories.push(category)
+          console.log(`✅ [ReceiptScanPage] Auto-created/found category: ${categoryName}`)
+        } catch (error) {
+          console.error(`❌ [ReceiptScanPage] Failed to create category ${categoryName}:`, error)
+        }
+      }
+      
+      return createdCategories
     } catch (error) {
-      console.error('Failed to fetch categories:', error)
+      console.error('❌ [ReceiptScanPage] Error auto-creating categories from OCR:', error)
+      return []
     }
   }
 
   // Save receipts to localStorage whenever receipts change
   useEffect(() => {
-    if (receipts.length > 0) {
+    // Only save completed receipts (they don't have active file processing)
+    const completedReceipts = receipts.filter(receipt => receipt.status === 'completed')
+    
+    if (completedReceipts.length > 0) {
       // Save without the File objects (they can't be serialized)
-      const receiptsToSave = receipts.map(({ file, ...receipt }) => ({
+      const receiptsToSave = completedReceipts.map(({ file, ...receipt }) => ({
         ...receipt,
         fileName: file.name,
         fileSize: file.size
@@ -78,10 +130,22 @@ export const ReceiptScanPage: React.FC = () => {
     }
   }, [notification])
 
+  const TESSERACT_SUPPORTED_TYPES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/tiff',
+    'image/bmp',
+    'image/gif',
+    'image/webp',
+    'image/x-portable-anymap',
+    'application/pdf',
+  ]
+
   const validateFile = (file: File): string | null => {
     // Validate file type
-    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
-      return 'Please upload an image (PNG, JPG) or PDF file'
+    if (!TESSERACT_SUPPORTED_TYPES.includes(file.type)) {
+      return 'Unsupported file type. Please upload a JPEG, PNG, TIFF, BMP, GIF, WebP, PNM, or PDF.'
     }
 
     // Validate file size (10MB limit)
@@ -133,12 +197,19 @@ export const ReceiptScanPage: React.FC = () => {
 
   const processReceipt = async (receipt: ProcessedReceipt) => {
     try {
+      // Check if file is valid for processing (not a placeholder from localStorage)
       if (receipt.file.size === 0) {
         setReceipts(prev => prev.map(r =>
           r.id === receipt.id
-            ? { ...r, status: 'error', error: 'File no longer available. Please re-upload.' }
+            ? { ...r, status: 'error', error: 'File no longer available. Please re-upload the receipt.' }
             : r
         ))
+        return
+      }
+
+      // Prevent processing if receipt is already completed
+      if (receipt.status === 'completed') {
+        console.log('Receipt already processed, skipping...')
         return
       }
 
@@ -148,30 +219,71 @@ export const ReceiptScanPage: React.FC = () => {
           : r
       ))
 
-      // Upload and get jobId
+      // Upload and get processing_id
       const response = await receiptAPI.uploadReceipt(receipt.file)
-      const jobId = response.data.jobId
+      const processingId = response.data.data.processing_id
 
       // Poll backend for progress
       let isDone = false
       while (!isDone) {
         // eslint-disable-next-line no-await-in-loop
-        const progressRes = await receiptAPI.getProgress(jobId)
-        const { progress, status } = progressRes.data
+        const progressRes = await receiptAPI.getProgress(processingId)
+        const statusData = progressRes.data.data
+        const status = statusData.processing_status
+        const progress = statusData.progress_percentage || (status === 'completed' ? 100 : status === 'processing' ? 50 : 0)
+        const progressMessage = statusData.progress_message || status
+        
+        console.log('🔍 [ReceiptScan] Progress update:', {
+          status,
+          progress,
+          progressMessage,
+          statusData
+        })
+        
         setReceipts(prev => prev.map(r =>
-          r.id === receipt.id ? { ...r, progress } : r
+          r.id === receipt.id ? { ...r, progress, progressMessage } : r
         ))
-        if (status === 'completed' || status === 'error') {
+        
+        if (status === 'completed' || status === 'failed') {
           isDone = true
         } else {
-          // Wait 250ms before next poll for better progress visibility
+          // Wait 500ms before next poll to see progress updates
           // eslint-disable-next-line no-await-in-loop
-          await new Promise(res => setTimeout(res, 250))
+          await new Promise(res => setTimeout(res, 500))
         }
       }
 
       // Get the final processed data
-      const finalData = await receiptAPI.getReceiptData(response.data.data.receiptId)
+      const finalData = await receiptAPI.getProgress(processingId)
+      const processedData = finalData.data.data
+      
+      // Parse extracted_data if it's a JSON string
+      let extractedData = processedData.extracted_data
+      console.log('🔍 [ReceiptScan] Raw extracted_data:', extractedData)
+      console.log('🔍 [ReceiptScan] Type of extracted_data:', typeof extractedData)
+      
+      if (typeof extractedData === 'string') {
+        try {
+          extractedData = JSON.parse(extractedData)
+          console.log('🔍 [ReceiptScan] Parsed extracted_data:', extractedData)
+        } catch (e) {
+          console.error('Failed to parse extracted_data:', e)
+          extractedData = {}
+        }
+      }
+
+      // Create proper ReceiptData object
+      const receiptData: ReceiptData = {
+        receiptId: processingId,
+        extractedText: '', // OCR text is not stored separately in current backend
+        parsedData: extractedData || {},
+        status: 'completed'
+      }
+
+      // Auto-create categories from OCR extracted data
+      if (extractedData) {
+        await autoCreateCategoriesFromOCR(receiptData)
+      }
 
       // Update with completed data
       setReceipts(prev => prev.map(r =>
@@ -179,8 +291,8 @@ export const ReceiptScanPage: React.FC = () => {
           ? {
               ...r,
               status: 'completed',
-              receiptData: finalData.data.data,
-              confirmedData: finalData.data.data.parsed_data,
+              receiptData: receiptData,
+              confirmedData: extractedData,
               progress: 100
             }
           : r
@@ -228,7 +340,7 @@ export const ReceiptScanPage: React.FC = () => {
     if (!receipt.receiptData || !receipt.confirmedData) return
 
     try {
-      await receiptAPI.confirmReceiptData(receipt.receiptData.id, receipt.confirmedData)
+      await receiptAPI.confirmReceiptData(receipt.receiptData.receiptId, receipt.confirmedData)
       
       // Remove the receipt from the list after successful transaction creation
       removeReceipt(receipt.id)
@@ -243,6 +355,8 @@ export const ReceiptScanPage: React.FC = () => {
     setReceipts([])
     setError(null)
   }, [])
+
+
 
   const pendingCount = receipts.filter(r => r.status === 'pending').length
   const processingCount = receipts.filter(r => r.status === 'processing').length
@@ -438,12 +552,14 @@ export const ReceiptScanPage: React.FC = () => {
               {receipt.status === 'processing' && (
                 <div className="mb-4">
                   <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                    <span>Processing...</span>
-                    <span>{receipt.progress || 0}%</span>
+                    <span className="truncate mr-2">
+                      {receipt.progressMessage || 'Processing...'}
+                    </span>
+                    <span className="flex-shrink-0">{receipt.progress || 0}%</span>
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                     <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${receipt.progress || 0}%` }}
                     ></div>
                   </div>
@@ -457,25 +573,25 @@ export const ReceiptScanPage: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Merchant:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsed_data.merchantName}</p>
+                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.merchantName || ''}</p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Amount:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsed_data.currency} {receipt.receiptData.parsed_data.totalAmount}</p>
+                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.currency} {receipt.receiptData.parsedData?.totalAmount}</p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Date:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsed_data.date}</p>
+                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.date || ''}</p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Category:</span>
-                        <p className="text-gray-600 dark:text-gray-300 capitalize">{receipt.receiptData.parsed_data.category}</p>
+                        <p className="text-gray-600 dark:text-gray-300 capitalize">{receipt.receiptData.parsedData?.category || ''}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Per-Item Categorization Table */}
-                  {receipt.receiptData && Array.isArray(receipt.receiptData.parsed_data.items) && receipt.receiptData.parsed_data.items.length > 0 && (
+                  {receipt.receiptData && Array.isArray(receipt.receiptData.parsedData?.items) && receipt.receiptData.parsedData.items.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                       <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Itemized Details</h4>
                       <div className="overflow-x-auto">
@@ -488,16 +604,16 @@ export const ReceiptScanPage: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {receipt.receiptData.parsed_data.items.map((item, idx) => (
+                            {receipt.receiptData.parsedData.items.map((item: any, idx: number) => (
                               <tr key={idx}>
-                                <td className="px-2 py-1">{item.name}</td>
-                                <td className="px-2 py-1">{item.amount}</td>
+                                <td className="px-2 py-1">{item?.name || ''}</td>
+                                <td className="px-2 py-1">{item?.amount || ''}</td>
                                 <td className="px-2 py-1">
                                   <input
                                     type="text"
-                                    value={receipt.confirmedData?.items?.[idx]?.category || item.category || ''}
+                                    value={receipt.confirmedData?.items?.[idx]?.category || item?.category || ''}
                                     onChange={e => {
-                                      const updatedItems = [...(receipt.confirmedData?.items || receipt.receiptData!.parsed_data.items)];
+                                      const updatedItems = [...(receipt.confirmedData?.items || receipt.receiptData!.parsedData.items)];
                                       updatedItems[idx] = {
                                         ...updatedItems[idx],
                                         category: e.target.value

@@ -11,36 +11,43 @@ import { ChatPage } from './pages/ChatPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ReceiptScanPage } from './pages/ReceiptScanPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { CurrencyProvider } from './contexts/CurrencyContext'
+import { useAuthExpiration } from './hooks/useAuthExpiration'
 import { useEffect } from 'react'
 
 function App() {
   const { initializeAuth } = useAuthStore()
+  
+  // Handle auth expiration events
+  useAuthExpiration()
 
   useEffect(() => {
     initializeAuth()
   }, [initializeAuth])
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route path="transactions" element={<TransactionsPage />} />
-        <Route path="budgets" element={<BudgetsPage />} />
-        <Route path="scan" element={<ReceiptScanPage />} />
-        <Route path="chat" element={<ChatPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-      </Route>
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <CurrencyProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Layout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+          <Route path="transactions" element={<TransactionsPage />} />
+          <Route path="budgets" element={<BudgetsPage />} />
+          <Route path="scan" element={<ReceiptScanPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </CurrencyProvider>
   )
 }
 

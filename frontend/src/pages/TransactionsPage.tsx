@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { transactionAPI, Transaction, Category, categoryAPI } from '../lib/api'
+import { transactionAPI, Transaction } from '../lib/api'
 import { format } from 'date-fns'
-import { Card, CardContent } from '../components/ui/Card'
-import { formatCurrency } from '../lib/utils'
-import { useUserCurrency } from '../stores/authStore'
+import { useCurrency } from '../contexts/CurrencyContext'
+import { useCategoryStore } from '../stores/categoryStore'
 
 export const TransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -19,7 +18,6 @@ export const TransactionsPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [categories, setCategories] = useState<Category[]>([])
   const [newTransaction, setNewTransaction] = useState({
     category_id: '',
     amount: '',
@@ -33,24 +31,25 @@ export const TransactionsPage: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
-  const userCurrency = useUserCurrency()
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editTransaction, setEditTransaction] = useState({
+    category_id: '',
+    amount: '',
+    description: '',
+    transaction_date: '',
+    vendor_name: '',
+    transaction_type: 'expense' as 'income' | 'expense'
+  })
+  const { formatAmount } = useCurrency()
+  const { categories, fetchCategories } = useCategoryStore()
 
   useEffect(() => {
     console.log('🔧 [TransactionsPage] Component mounted, fetching data...')
     fetchTransactions()
-    fetchCategories()
-  }, [filters, currentPage])
-
-  const fetchCategories = async () => {
-    try {
-      const response = await categoryAPI.getCategories()
-      console.log('🔍 [TransactionsPage] Fetched categories:', response.data.data)
-      setCategories(response.data.data || [])
-    } catch (error: any) {
-      console.error('❌ [TransactionsPage] Failed to fetch categories:', error)
-      setError(error.response?.data?.message || 'Failed to fetch categories')
+    if (categories.length === 0) {
+      fetchCategories()
     }
-  }
+  }, [filters, currentPage])
 
   const fetchTransactions = async () => {
     setIsLoading(true)
@@ -61,10 +60,25 @@ export const TransactionsPage: React.FC = () => {
         limit: 10,
         ...filters
       })
-      setTransactions(response.data.data.transactions)
-      setTotalCount(response.data.data.total || 0)
-      setTotalPages(Math.ceil((response.data.data.total || 0) / 10))
+      
+      console.log('🔍 [TransactionsPage] Full response:', response)
+      console.log('🔍 [TransactionsPage] Response data:', response.data)
+      console.log('🔍 [TransactionsPage] Response data keys:', Object.keys(response.data || {}))
+      
+      // Handle the structured API response
+      const apiData = response.data.data
+      const transactions = apiData.transactions || []
+      const total = apiData.total || 0
+      
+      console.log('🔍 [TransactionsPage] API response:', apiData)
+      console.log('🔍 [TransactionsPage] Transactions:', transactions)
+      console.log('🔍 [TransactionsPage] Total count:', total)
+      
+      setTransactions(transactions)
+      setTotalCount(total)
+      setTotalPages(apiData.total_pages || Math.ceil(total / 10))
     } catch (error: any) {
+      console.error('❌ [TransactionsPage] Failed to fetch transactions:', error)
       setError(error.response?.data?.message || 'Failed to fetch transactions')
     } finally {
       setIsLoading(false)
@@ -84,10 +98,20 @@ export const TransactionsPage: React.FC = () => {
       console.log('🔍 [Frontend] Attempting to delete transaction:', transactionToDelete)
       const response = await transactionAPI.deleteTransaction(transactionToDelete)
       console.log('✅ [Frontend] Delete response:', response)
-      setTransactions(prev => prev.filter(t => t.id !== transactionToDelete))
-      setError(null) // Clear any previous errors
+      
+      // Close transaction details modal if it's open
+      setSelectedTransaction(null)
+      setTransactionDetails(null)
+      setIsEditMode(false)
+      
+      // Clear delete modal
       setShowDeleteModal(false)
       setTransactionToDelete(null)
+      
+      // Refresh transactions list from server
+      await fetchTransactions()
+      
+      setError(null) // Clear any previous errors
     } catch (error: any) {
       console.error('❌ [Frontend] Delete error:', error)
       console.error('❌ [Frontend] Error response:', error.response)
@@ -153,13 +177,132 @@ export const TransactionsPage: React.FC = () => {
     }
   }
 
+  const handleEditTransaction = (transaction: Transaction) => {
+    setIsEditMode(true)
+    setEditTransaction({
+      category_id: transaction.category_id || '',
+      amount: transaction.amount.toString(),
+      description: transaction.description,
+      transaction_date: transaction.transaction_date.split('T')[0],
+      vendor_name: transaction.vendor_name || '',
+      transaction_type: transaction.transaction_type
+    })
+  }
+
+  const handleUpdateTransaction = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!editTransaction.category_id || !editTransaction.amount || !editTransaction.description) {
+      setError('Please fill in all required fields')
+      return
+    }
+
+    // Validate amount is a valid number
+    if (isNaN(parseFloat(editTransaction.amount)) || parseFloat(editTransaction.amount) <= 0) {
+      setError('Please enter a valid positive amount')
+      return
+    }
+
+    // Validate category_id is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(editTransaction.category_id)) {
+      console.error('❌ [TransactionsPage] Invalid category_id format:', editTransaction.category_id)
+      setError('Please select a valid category')
+      return
+    }
+
+    if (!selectedTransaction) return
+
+    try {
+      // Validate and prepare the data
+      const transactionData: any = {
+        category_id: editTransaction.category_id,
+        amount: parseFloat(editTransaction.amount),
+        description: editTransaction.description.trim(),
+        transaction_type: editTransaction.transaction_type
+      }
+
+      // Add transaction_date as proper ISO datetime string
+      if (editTransaction.transaction_date) {
+        // Convert YYYY-MM-DD to ISO datetime string
+        // Add time component to avoid timezone issues
+        transactionData.transaction_date = editTransaction.transaction_date + 'T12:00:00.000Z'
+      }
+
+      // Only add vendor_name if it has actual content (backend requires min_length=1)
+      if (editTransaction.vendor_name?.trim()) {
+        transactionData.vendor_name = editTransaction.vendor_name.trim()
+      }
+      // Don't send vendor_name at all if it's empty (optional field)
+
+      console.log('🔍 [TransactionsPage] Updating transaction with data:', transactionData)
+
+      await transactionAPI.updateTransaction(selectedTransaction.id, transactionData)
+      
+      // Update the selected transaction for the modal
+      setSelectedTransaction({
+        ...selectedTransaction,
+        ...transactionData,
+        amount: parseFloat(editTransaction.amount)
+      })
+      
+      // Update the transactions list
+      setTransactions(prev => prev.map(t => 
+        t.id === selectedTransaction.id 
+          ? { ...t, ...transactionData, amount: parseFloat(editTransaction.amount) }
+          : t
+      ))
+      
+      setIsEditMode(false)
+      setError(null)
+      
+    } catch (error: any) {
+      console.error('❌ [TransactionsPage] Transaction update failed:', error)
+      console.error('❌ [TransactionsPage] Error response:', error.response?.data)
+      
+      // Extract more detailed error information
+      let errorMessage = 'Failed to update transaction'
+      if (error.response?.data) {
+        if (error.response.data.message) {
+          errorMessage = error.response.data.message
+        } else if (error.response.data.details) {
+          errorMessage = error.response.data.details
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error
+        }
+      }
+      
+      setError(errorMessage)
+    }
+  }
+
+  const cancelEdit = () => {
+    setIsEditMode(false)
+    setEditTransaction({
+      category_id: '',
+      amount: '',
+      description: '',
+      transaction_date: '',
+      vendor_name: '',
+      transaction_type: 'expense'
+    })
+  }
+
   const handleViewTransactionDetails = async (transaction: Transaction) => {
     setSelectedTransaction(transaction)
     
-    // Try to fetch receipt details if this transaction came from a receipt
+    // Fetch full transaction details including receipt data
     try {
       const response = await transactionAPI.getTransaction(transaction.id)
-      setTransactionDetails(response.data.data)
+      console.log('🔍 [TransactionsPage] Transaction detail response:', response.data)
+      
+      // Backend returns the transaction data directly (not nested)
+      const transactionDetailData = response.data?.data || response.data || {}
+      console.log('🔍 [TransactionsPage] Transaction detail data:', transactionDetailData)
+      console.log('🔍 [TransactionsPage] Receipt ID:', transactionDetailData.receipt_id)
+      console.log('🔍 [TransactionsPage] Receipt details:', transactionDetailData.receipt_details)
+      
+      setTransactionDetails(transactionDetailData)
     } catch (error) {
       console.error('Failed to fetch transaction details:', error)
       setTransactionDetails(null)
@@ -259,7 +402,7 @@ export const TransactionsPage: React.FC = () => {
             >
               <option value="">All Categories</option>
               {categories.map((category) => (
-                <option key={category.id} value={category.name}>
+                <option key={category.id} value={category.id}>
                   {category.name}
                 </option>
               ))}
@@ -327,9 +470,6 @@ export const TransactionsPage: React.FC = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Type
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -344,8 +484,8 @@ export const TransactionsPage: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 dark:text-white">{transaction.description}</div>
-                          {transaction.merchant_name && (
-                            <div className="text-sm text-gray-500 dark:text-gray-400">{transaction.merchant_name}</div>
+                          {(transaction.vendor_name || transaction.merchant_name) && (
+                            <div className="text-sm text-gray-500 dark:text-gray-400">{transaction.vendor_name || transaction.merchant_name}</div>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -354,21 +494,10 @@ export const TransactionsPage: React.FC = () => {
                           </span>
                         </td>
                         <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getTransactionTypeColor(transaction.transaction_type)}`}>
-                          {getTransactionTypeSign(transaction.transaction_type)}{formatCurrency(transaction.amount, userCurrency)}
+                          {getTransactionTypeSign(transaction.transaction_type)}{formatAmount(transaction.amount)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white capitalize">
                           {transaction.transaction_type}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteTransaction(transaction.id)
-                            }}
-                            className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 transition-colors"
-                          >
-                            Delete
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -592,6 +721,7 @@ export const TransactionsPage: React.FC = () => {
                 onClick={() => {
                   setSelectedTransaction(null)
                   setTransactionDetails(null)
+                  setIsEditMode(false)
                 }}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               >
@@ -602,36 +732,150 @@ export const TransactionsPage: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount</label>
-                  <p className={`text-lg font-semibold ${getTransactionTypeColor(selectedTransaction.transaction_type)}`}>
-                    {getTransactionTypeSign(selectedTransaction.transaction_type)}{formatCurrency(selectedTransaction.amount, userCurrency)}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-                  <p className="text-gray-900 dark:text-white capitalize">{selectedTransaction.transaction_type}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
-                  <p className="text-gray-900 dark:text-white">{format(new Date(selectedTransaction.transaction_date), 'MMMM dd, yyyy')}</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-                  <p className="text-gray-900 dark:text-white">{selectedTransaction.category_name || 'Uncategorized'}</p>
-                </div>
-              </div>
+              {isEditMode ? (
+                /* Edit Form */
+                <form onSubmit={handleUpdateTransaction} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Category *
+                      </label>
+                      <select
+                        value={editTransaction.category_id}
+                        onChange={(e) => setEditTransaction(prev => ({ ...prev, category_id: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        <option value="">Select a category</option>
+                        {categories.map(category => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-                <p className="text-gray-900 dark:text-white">{selectedTransaction.description}</p>
-              </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Type *
+                      </label>
+                      <select
+                        value={editTransaction.transaction_type}
+                        onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_type: e.target.value as 'income' | 'expense' }))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="expense">Expense</option>
+                        <option value="income">Income</option>
+                      </select>
+                    </div>
+                  </div>
 
-              {selectedTransaction.merchant_name && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
-                  <p className="text-gray-900 dark:text-white">{selectedTransaction.merchant_name}</p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Amount *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editTransaction.amount}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, amount: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Description *
+                    </label>
+                    <input
+                      type="text"
+                      value={editTransaction.description}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="What was this transaction for?"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Merchant
+                    </label>
+                    <input
+                      type="text"
+                      value={editTransaction.vendor_name}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, vendor_name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Merchant name"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={editTransaction.transaction_date}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_date: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex space-x-3 pt-4">
+                    <button
+                      type="submit"
+                      className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
+                    >
+                      Update Transaction
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* View Mode */
+                <div>
+                  <div className="grid grid-cols-2 gap-6 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount</label>
+                      <p className={`text-lg font-semibold ${getTransactionTypeColor(selectedTransaction.transaction_type)}`}>
+                        {getTransactionTypeSign(selectedTransaction.transaction_type)}{formatAmount(selectedTransaction.amount)}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                      <p className="text-gray-900 dark:text-white capitalize">{selectedTransaction.transaction_type}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                      <p className="text-gray-900 dark:text-white">{format(new Date(selectedTransaction.transaction_date), 'MMMM dd, yyyy')}</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                      <p className="text-gray-900 dark:text-white">{selectedTransaction.category_name || 'Uncategorized'}</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                    <p className="text-gray-900 dark:text-white">{selectedTransaction.description}</p>
+                  </div>
+
+                  {(selectedTransaction.vendor_name || selectedTransaction.merchant_name) && (
+                    <div className="mb-6">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
+                      <p className="text-gray-900 dark:text-white">{selectedTransaction.vendor_name || selectedTransaction.merchant_name}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -640,46 +884,56 @@ export const TransactionsPage: React.FC = () => {
                   <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Receipt Information</h4>
                   
                   {/* Receipt Data Summary */}
-                  {transactionDetails.receipt_details.parsedData && (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {transactionDetails.receipt_details.parsedData.merchantName && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
-                            <p className="text-gray-900 dark:text-white text-sm">{transactionDetails.receipt_details.parsedData.merchantName}</p>
-                          </div>
-                        )}
-                        {transactionDetails.receipt_details.parsedData.totalAmount && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Total</label>
-                            <p className="text-gray-900 dark:text-white text-sm">
-                              {transactionDetails.receipt_details.parsedData.currency || '$'}{transactionDetails.receipt_details.parsedData.totalAmount}
-                            </p>
-                          </div>
-                        )}
-                        {transactionDetails.receipt_details.parsedData.date && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Date</label>
-                            <p className="text-gray-900 dark:text-white text-sm">{transactionDetails.receipt_details.parsedData.date}</p>
-                          </div>
-                        )}
-                        {transactionDetails.receipt_details.parsedData.confidence && (
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confidence</label>
-                            <p className="text-gray-900 dark:text-white text-sm">{Math.round(transactionDetails.receipt_details.parsedData.confidence * 100)}%</p>
-                          </div>
-                        )}
+                  {(() => {
+                    const parsedData = transactionDetails.receipt_details.parsedData || transactionDetails.receipt_details.parsed_data
+                    if (!parsedData) return null
+                    
+                    return (
+                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {(parsedData.merchantName || parsedData.merchant_name) && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
+                              <p className="text-gray-900 dark:text-white text-sm">{parsedData.merchantName || parsedData.merchant_name}</p>
+                            </div>
+                          )}
+                          {(parsedData.totalAmount || parsedData.total_amount) && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Total</label>
+                              <p className="text-gray-900 dark:text-white text-sm">
+                                {parsedData.currency || '$'}{parsedData.totalAmount || parsedData.total_amount}
+                              </p>
+                            </div>
+                          )}
+                          {parsedData.date && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Receipt Date</label>
+                              <p className="text-gray-900 dark:text-white text-sm">{parsedData.date}</p>
+                            </div>
+                          )}
+                          {parsedData.confidence && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confidence</label>
+                              <p className="text-gray-900 dark:text-white text-sm">{Math.round(parsedData.confidence * 100)}%</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Receipt Items */}
-                  {transactionDetails.receipt_details.parsedData?.items && transactionDetails.receipt_details.parsedData.items.length > 0 && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Receipt Items</label>
-                      <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
-                        <div className="space-y-2">
-                          {transactionDetails.receipt_details.parsedData.items.map((item: any, index: number) => (
+                  {(() => {
+                    const parsedData = transactionDetails.receipt_details.parsedData || transactionDetails.receipt_details.parsed_data
+                    const items = parsedData?.items
+                    if (!items || !Array.isArray(items) || items.length === 0) return null
+                    
+                    return (
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Receipt Items</label>
+                        <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
+                          <div className="space-y-2">
+                            {items.map((item: any, index: number) => (
                             <div key={index} className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-600 last:border-b-0">
                               <div className="flex-1">
                                 <span className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</span>
@@ -692,18 +946,19 @@ export const TransactionsPage: React.FC = () => {
                               </span>
                             </div>
                           ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* OCR Text */}
-                  {transactionDetails.receipt_details.extractedText && (
+                  {(transactionDetails.receipt_details.extractedText || transactionDetails.receipt_details.extracted_text) && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Extracted Text</label>
                       <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
                         <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                          {transactionDetails.receipt_details.extractedText}
+                          {transactionDetails.receipt_details.extractedText || transactionDetails.receipt_details.extracted_text}
                         </pre>
                       </div>
                     </div>
@@ -713,21 +968,34 @@ export const TransactionsPage: React.FC = () => {
             </div>
 
             <div className="border-t border-gray-200 dark:border-gray-700 p-6 flex justify-between">
-              <button
-                onClick={() => handleDeleteTransaction(selectedTransaction.id)}
-                className="px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors"
-              >
-                Delete Transaction
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedTransaction(null)
-                  setTransactionDetails(null)
-                }}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-              >
-                Close
-              </button>
+              {!isEditMode && (
+                <button
+                  onClick={() => handleDeleteTransaction(selectedTransaction.id)}
+                  className="px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors"
+                >
+                  Delete Transaction
+                </button>
+              )}
+              <div className="flex space-x-3 ml-auto">
+                {!isEditMode && (
+                  <button
+                    onClick={() => handleEditTransaction(selectedTransaction)}
+                    className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedTransaction(null)
+                    setTransactionDetails(null)
+                    setIsEditMode(false)
+                  }}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

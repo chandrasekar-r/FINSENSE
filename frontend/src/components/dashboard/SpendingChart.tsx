@@ -51,7 +51,7 @@ export const SpendingChart: React.FC<SpendingChartProps> = ({ data, className })
     <div className={`bg-card rounded-lg border border-border p-6 ${className}`}>
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-foreground">Spending Overview</h3>
-        <p className="text-sm text-muted-foreground">Your financial activity over time</p>
+        <p className="text-sm text-muted-foreground">Last 30 days of financial activity</p>
       </div>
       
       <div className="h-80">
