@@ -131,6 +131,11 @@ async def confirm_receipt_data(
         body = await request.json()
         confirmed_data = body.get('confirmedData', {})
         
+        logger.info(f"Confirming receipt data for processing_id: {processing_id}")
+        logger.debug(f"Request body: {body}")
+        logger.debug(f"Confirmed data: {confirmed_data}")
+        logger.info(f"Confirmed data contains {len(confirmed_data.get('items', []))} items")
+        
         receipt_service = ReceiptProcessingService()
         
         # Create transaction from confirmed data
@@ -155,6 +160,9 @@ async def get_active_processing_jobs(
 ):
     """Get all active receipt processing jobs for the current user"""
     try:
+        logger.info(f"Getting active processing jobs for user: {current_user}")
+        logger.debug(f"User ID type: {type(current_user)}, length: {len(current_user) if current_user else 'None'}")
+        
         receipt_service = ReceiptProcessingService()
         jobs = await receipt_service.get_active_processing_jobs(current_user)
         

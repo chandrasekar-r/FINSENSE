@@ -60,7 +60,6 @@ export const DashboardPage: React.FC = () => {
       
       // Fetch spending summary for current month
       const spendingSummaryResponse = await transactionAPI.getSpendingSummary(currentMonthStart, currentMonthEnd)
-      console.log('🔍 [DashboardPage] Spending summary response:', spendingSummaryResponse.data)
       const spendingData = spendingSummaryResponse.data?.data || spendingSummaryResponse.data || {}
       
       // Fetch previous month spending summary
@@ -69,12 +68,10 @@ export const DashboardPage: React.FC = () => {
 
       // Fetch category summary for current month
       const categorySummaryResponse = await transactionAPI.getCategorySummary(currentMonthStart, currentMonthEnd)
-      console.log('🔍 [DashboardPage] Category summary response:', categorySummaryResponse.data)
       const categoryData = categorySummaryResponse.data?.data || categorySummaryResponse.data || []
 
       // Fetch recent transactions
       const transactionsResponse = await transactionAPI.getTransactions({ limit: 10 })
-      console.log('🔍 [DashboardPage] Transactions response:', transactionsResponse.data)
       const transactionData = transactionsResponse.data?.data || transactionsResponse.data || {}
       const transactions = transactionData.transactions || transactionData || []
 
@@ -82,12 +79,9 @@ export const DashboardPage: React.FC = () => {
       const allTransactionsResponse = await transactionAPI.getTransactions({ limit: 100 })
       const allTransactionData = allTransactionsResponse.data?.data || allTransactionsResponse.data || {}
       const allTransactions = allTransactionData.transactions || allTransactionData || []
-      console.log('🔍 [DashboardPage] All transactions fetched:', Array.isArray(allTransactions) ? allTransactions.length : 'Not an array')
-      console.log('🔍 [DashboardPage] Sample transaction:', allTransactions[0])
 
       // Fetch budget data
       const budgetsResponse = await budgetAPI.getBudgets(true)
-      console.log('🔍 [DashboardPage] Fetched budgets response:', budgetsResponse.data)
       const budgets = Array.isArray(budgetsResponse.data) ? budgetsResponse.data : []
 
       // Filter transactions for current month only
@@ -106,8 +100,6 @@ export const DashboardPage: React.FC = () => {
       const prevAllTransactions = prevAllTransactionData.transactions || prevAllTransactionData || []
       
       // Calculate stats
-      console.log('🔍 [DashboardPage] Spending data fields:', Object.keys(spendingData))
-      console.log('🔍 [DashboardPage] Spending data:', spendingData)
       const totalSpent = Number(spendingData.total_expenses || spendingData.totalExpenses) || 0
       const totalIncome = currentMonthTransactions
         .filter((t: Transaction) => t.transaction_type === 'income')
@@ -116,7 +108,6 @@ export const DashboardPage: React.FC = () => {
         const budgetAmount = Number(budget.budget_amount || budget.amount) || 0
         return sum + budgetAmount
       }, 0)
-      console.log('🔍 [DashboardPage] Total budget calculated:', totalBudget)
       const budgetRemaining = totalBudget - totalSpent
       const transactionCount = Number(spendingData.transaction_count || spendingData.total_transactions || spendingData.totalTransactions) || 0
       const budgetUsage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
@@ -135,7 +126,6 @@ export const DashboardPage: React.FC = () => {
 
       // Generate chart data from transactions
       const chartData = generateChartData(allTransactions)
-      console.log('🔍 [DashboardPage] Generated chart data:', chartData)
 
       const newStats = {
         totalSpent,
@@ -147,15 +137,12 @@ export const DashboardPage: React.FC = () => {
         incomeChange
       }
       
-      console.log('🔍 [DashboardPage] Setting stats:', newStats)
       setStats(newStats)
 
       setRecentTransactions(transactions.slice(0, 5))
       
       // Fix category spending data access
-      console.log('🔍 [DashboardPage] Category data for chart:', categoryData)
       const categorySpendingData = categoryData.categories || categoryData || []
-      console.log('🔍 [DashboardPage] Category spending extracted:', categorySpendingData)
       setCategorySpending(Array.isArray(categorySpendingData) ? categorySpendingData : [])
       
       setSpendingChartData(chartData)
@@ -180,7 +167,6 @@ export const DashboardPage: React.FC = () => {
   }
 
   const generateChartData = (transactions: Transaction[]) => {
-    console.log('🔍 [DashboardPage] Generating daily chart data from transactions:', transactions.length)
     
     // Generate data for the last 30 days
     const last30Days = Array.from({ length: 30 }, (_, i) => {
@@ -193,7 +179,6 @@ export const DashboardPage: React.FC = () => {
         return transactionDate === dayStr
       })
       
-      console.log(`🔍 [DashboardPage] ${dateStr}: ${dayTransactions.length} transactions`)
 
       const expenses = dayTransactions
         .filter(t => t.transaction_type === 'expense')
@@ -215,7 +200,6 @@ export const DashboardPage: React.FC = () => {
         amount: expenses,
         income: income > 0 ? income : undefined
       }
-      console.log(`🔍 [DashboardPage] Chart data point for ${dateStr}:`, chartDataPoint)
       return chartDataPoint
     })
 
@@ -315,7 +299,6 @@ export const DashboardPage: React.FC = () => {
             value: Number(cat.total_amount || cat.total_spent || cat.totalSpent || cat.value || 0),
             color: cat.category_color || cat.color
           }))
-          console.log('🔍 [DashboardPage] Mapped category data for chart:', mappedData)
           return mappedData
         })()} />
       </div>

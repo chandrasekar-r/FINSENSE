@@ -75,12 +75,9 @@ const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
 }
 
 export const CategoryChart: React.FC<CategoryChartProps> = ({ data, className }) => {
-  console.log('🔍 [CategoryChart] Received data:', data)
-  console.log('🔍 [CategoryChart] Data length:', data.length)
   
   // Calculate total for percentage calculation
   const total = data.reduce((sum, item) => sum + item.value, 0)
-  console.log('🔍 [CategoryChart] Total calculated:', total)
   const dataWithTotal = data.map(item => ({ ...item, total }))
 
   return (

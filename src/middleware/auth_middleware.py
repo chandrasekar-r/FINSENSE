@@ -25,6 +25,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        logger.debug(f"Extracted user_id from token: {user_id}")
         return user_id
     
     except HTTPException:

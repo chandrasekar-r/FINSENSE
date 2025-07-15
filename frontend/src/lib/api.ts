@@ -77,7 +77,6 @@ api.interceptors.response.use(
           }
         }
       } catch (refreshError) {
-        console.log('Token refresh failed:', refreshError)
       }
       
       // If refresh fails or no refresh token, handle auth expiration
@@ -429,9 +428,7 @@ export const chatAPI = {
                     break
                   case 'structured':
                     // Handle structured response - convert to JSON string for compatibility
-                    console.log('📊 Received structured response:', data.data)
                     const structuredResponse = JSON.stringify(data.data)
-                    console.log('📊 Converted to JSON string:', structuredResponse.substring(0, 200) + '...')
                     onComplete(structuredResponse)
                     return
                   case 'chunk':

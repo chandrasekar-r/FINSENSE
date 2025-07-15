@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 import uuid
 
@@ -38,6 +38,7 @@ class TransactionResponse(TransactionBase):
     receipt_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    receipt_details: Optional[Dict[str, Any]] = None
     
     class Config:
         from_attributes = True

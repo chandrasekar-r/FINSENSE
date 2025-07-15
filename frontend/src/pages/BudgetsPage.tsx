@@ -120,9 +120,6 @@ export const BudgetsPage: React.FC = () => {
         end_date: newBudget.end_date || undefined
       }
 
-      console.log('🔍 [BudgetsPage] Creating budget with data:', budgetData)
-      console.log('🔍 [BudgetsPage] Categories available:', categories)
-      console.log('🔍 [BudgetsPage] Selected category_id:', newBudget.category_id)
 
       await budgetAPI.createBudget(budgetData)
       
@@ -424,9 +421,6 @@ export const BudgetsPage: React.FC = () => {
                     <select
                       value={newBudget.category_id}
                       onChange={(e) => {
-                        console.log('🔍 [BudgetsPage] Category selected:', e.target.value)
-                        const selectedCategory = categories.find(c => c.id === e.target.value)
-                        console.log('🔍 [BudgetsPage] Selected category object:', selectedCategory)
                         setNewBudget(prev => ({ ...prev, category_id: e.target.value }))
                       }}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -434,7 +428,6 @@ export const BudgetsPage: React.FC = () => {
                     >
                       <option value="">Select a category</option>
                       {categories.map((category) => {
-                        console.log('🔍 [BudgetsPage] Rendering category option:', category)
                         return (
                           <option key={category.id} value={category.id}>
                             {category.icon} {category.name}

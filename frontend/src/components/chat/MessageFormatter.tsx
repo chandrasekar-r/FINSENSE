@@ -10,11 +10,6 @@ interface MessageFormatterProps {
 }
 
 export const MessageFormatter: React.FC<MessageFormatterProps> = ({ text, isStreaming = false }) => {
-  console.log('🎨 MessageFormatter called with:', { 
-    textLength: text.length, 
-    isStreaming, 
-    textStart: text.substring(0, 100) 
-  })
   
   // During streaming, don't try to parse JSON - just show the text as-is
   if (isStreaming) {
@@ -25,8 +20,6 @@ export const MessageFormatter: React.FC<MessageFormatterProps> = ({ text, isStre
   try {
     const trimmedText = text.trim()
     if (trimmedText.startsWith('{')) {
-      console.log('🎨 Attempting to parse JSON response')
-      console.log('🎨 Text to parse:', trimmedText.substring(0, 100) + '...')
       
       // Try to find the end of the JSON object
       let braceCount = 0
@@ -43,16 +36,12 @@ export const MessageFormatter: React.FC<MessageFormatterProps> = ({ text, isStre
       if (jsonEndIndex > 0) {
         const jsonText = trimmedText.substring(0, jsonEndIndex + 1)
         const jsonResponse = JSON.parse(jsonText)
-        console.log('🎨 Parsed JSON:', jsonResponse)
         if (jsonResponse.type && jsonResponse.content) {
-          console.log('🎨 Rendering structured response of type:', jsonResponse.type)
           return renderStructuredResponse(jsonResponse)
         }
       }
     }
   } catch (e) {
-    console.log('🎨 JSON parsing failed:', e)
-    console.log('🎨 Failed text:', text.substring(0, 200) + '...')
     // Not JSON, continue with markdown formatting
   }
 

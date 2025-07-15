@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional, List
 import uuid
 import json
 import asyncio
+import traceback
 from datetime import datetime, date
 from src.config.database import DatabaseManager
 from src.services.ocr_service import OCRService
@@ -209,12 +210,15 @@ class ReceiptProcessingService:
     async def get_active_processing_jobs(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active receipt processing jobs for user"""
         try:
+            logger.info(f"get_active_processing_jobs called with user_id: {user_id}")
+            
             # Validate and convert string ID to UUID object
             if isinstance(user_id, str):
                 try:
                     user_uuid = uuid.UUID(user_id)
-                except ValueError:
-                    logger.error(f"Invalid user_id UUID format in get_active_processing_jobs: {user_id}")
+                    logger.debug(f"Successfully converted user_id to UUID: {user_uuid}")
+                except ValueError as e:
+                    logger.error(f"Invalid user_id UUID format in get_active_processing_jobs: {user_id}, error: {e}")
                     return []
             else:
                 user_uuid = user_id
@@ -634,34 +638,64 @@ class ReceiptProcessingService:
             logger.error(f"Error creating transaction from receipt: {e}")
             raise create_error("Failed to create transaction from receipt", 500)
     
-    async def _save_receipt_items(self, transaction_id: uuid.UUID, items: List[Dict[str, Any]]) -> None:
+    async def _save_receipt_items(self, transaction_id: uuid.UUID, items: List[Dict[str, Any]], user_id: str = None) -> None:
         """Save individual receipt items"""
         try:
             if not items:
+                logger.warning(f"No items to save for transaction {transaction_id}")
                 return
+            
+            logger.info(f"Saving {len(items)} receipt items for transaction {transaction_id}")
+            logger.debug(f"Items data: {items}")
             
             query = """
                 INSERT INTO transaction_line_items (transaction_id, item_name, quantity, unit_price, total_price)
                 VALUES ($1, $2, $3, $4, $5)
             """
             
-            # Use a generic database manager for this operation
-            async with DatabaseManager() as db:
-                for item in items:
-                    await db.execute(
-                        query,
-                        transaction_id,
-                        item.get("name", "Unknown Item"),
-                        item.get("quantity", 1),
-                        float(item.get("amount", 0)),
-                        float(item.get("amount", 0)) * item.get("quantity", 1)
-                    )
+            # Use database manager with user_id if provided, otherwise use generic
+            if user_id:
+                async with DatabaseManager(user_id) as db:
+                    await self._insert_receipt_items(db, query, transaction_id, items)
+            else:
+                async with DatabaseManager() as db:
+                    await self._insert_receipt_items(db, query, transaction_id, items)
             
-            logger.info(f"Saved {len(items)} receipt items for transaction {transaction_id}")
+            logger.info(f"Successfully saved {len(items)} receipt items for transaction {transaction_id}")
         
         except Exception as e:
             logger.error(f"Error saving receipt items: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             # Don't raise error as this is not critical for transaction creation
+    
+    async def _insert_receipt_items(self, db, query: str, transaction_id: uuid.UUID, items: List[Dict[str, Any]]) -> None:
+        """Helper method to insert receipt items into database"""
+        for idx, item in enumerate(items):
+            # Handle different possible field names
+            item_name = item.get("name") or item.get("item_name") or item.get("itemName") or f"Unknown Item {idx + 1}"
+            quantity = item.get("quantity") or item.get("qty") or 1
+            
+            # Handle price fields - prioritize total amount, then unit price
+            total_price = item.get("amount") or item.get("total_amount") or item.get("totalAmount") or 0
+            unit_price = item.get("price") or item.get("unit_price") or item.get("unitPrice") or 0
+            
+            # If we have total but no unit price, calculate unit price
+            if total_price and not unit_price and quantity > 0:
+                unit_price = float(total_price) / float(quantity)
+            # If we have unit price but no total, calculate total
+            elif unit_price and not total_price:
+                total_price = float(unit_price) * float(quantity)
+            
+            logger.debug(f"Saving item {idx + 1}: name={item_name}, quantity={quantity}, unit_price={unit_price}, total_price={total_price}")
+            
+            await db.execute(
+                query,
+                transaction_id,
+                item_name,
+                float(quantity),
+                float(unit_price),
+                float(total_price)
+            )
     
     async def create_transaction_from_confirmed_data(
         self, 
@@ -725,8 +759,12 @@ class ReceiptProcessingService:
             
             # Save line items if available
             items = confirmed_data.get('items', [])
+            logger.info(f"Confirmed data contains {len(items)} items")
+            logger.debug(f"Confirmed data structure: {confirmed_data}")
             if items:
-                await self._save_receipt_items(transaction["id"], items)
+                await self._save_receipt_items(transaction["id"], items, user_id)
+            else:
+                logger.warning("No items found in confirmed data - line items will not be saved")
             
             # Update processing record with transaction ID
             await self._update_processing_record(

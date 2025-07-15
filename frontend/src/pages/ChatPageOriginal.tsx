@@ -222,7 +222,6 @@ export const ChatPage: React.FC = () => {
   }, [messages, streamingResponse])
 
   useEffect(() => {
-    console.log('🔧 [ChatPage] Component mounted, loading chat history...')
     loadChatHistory()
 
     // Cleanup on unmount
@@ -236,7 +235,6 @@ export const ChatPage: React.FC = () => {
   const loadChatHistory = async () => {
     try {
       const response = await chatAPI.getChatHistory({ limit: 50 })
-      console.log('🔍 [ChatPage] Chat history response:', response.data)
       
       // Handle different response structures
       const responseData = response.data?.data || response.data || {}
@@ -250,7 +248,6 @@ export const ChatPage: React.FC = () => {
         created_at: msg.created_at
       })).reverse() : [] // Reverse to show oldest first
       
-      console.log('🔍 [ChatPage] Processed chat messages:', chatMessages)
       setMessages(chatMessages)
       
       // If there are messages, generate recommendations based on the last conversation
@@ -356,15 +353,12 @@ export const ChatPage: React.FC = () => {
   }
 
   const handleClearHistory = () => {
-    console.log('🚀 [Frontend] Clear History button clicked!')
     setShowClearModal(true)
   }
 
   const confirmClearHistory = async () => {
     try {
-      console.log('🔍 [Frontend] Attempting to clear chat history')
-      const response = await chatAPI.clearChatHistory()
-      console.log('✅ [Frontend] Clear response:', response)
+      await chatAPI.clearChatHistory()
       setMessages([])
       setRecommendations([]) // Clear recommendations when clearing history
       setError(null) // Clear any previous errors
@@ -378,16 +372,10 @@ export const ChatPage: React.FC = () => {
   }
 
   const cancelClear = () => {
-    console.log('⚠️ [Frontend] Clear cancelled by user')
     setShowClearModal(false)
   }
 
   const formatMessage = (text: string, isStreaming: boolean = false) => {
-    console.log('🎨 formatMessage called with:', { 
-      textLength: text.length, 
-      isStreaming, 
-      textStart: text.substring(0, 100) 
-    });
     
     // During streaming, don't try to parse JSON - just show the text as-is
     if (isStreaming) {
@@ -398,8 +386,6 @@ export const ChatPage: React.FC = () => {
     try {
       const trimmedText = text.trim();
       if (trimmedText.startsWith('{')) {
-        console.log('🎨 Attempting to parse JSON response');
-        console.log('🎨 Text to parse:', trimmedText.substring(0, 100) + '...');
         
         // Try to find the end of the JSON object
         let braceCount = 0;
@@ -416,16 +402,12 @@ export const ChatPage: React.FC = () => {
         if (jsonEndIndex > 0) {
           const jsonText = trimmedText.substring(0, jsonEndIndex + 1);
           const jsonResponse = JSON.parse(jsonText);
-          console.log('🎨 Parsed JSON:', jsonResponse);
           if (jsonResponse.type && jsonResponse.content) {
-            console.log('🎨 Rendering structured response of type:', jsonResponse.type);
             return renderStructuredResponse(jsonResponse);
           }
         }
       }
     } catch (e) {
-      console.log('🎨 JSON parsing failed:', e);
-      console.log('🎨 Failed text:', text.substring(0, 200) + '...');
       // Not JSON, continue with markdown formatting
     }
 

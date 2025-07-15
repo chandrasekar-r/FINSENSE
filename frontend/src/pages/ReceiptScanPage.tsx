@@ -18,6 +18,12 @@ interface ProcessedReceipt {
 
 const STORAGE_KEY = 'finsense-receipt-queue'
 
+// UUID validation function
+const isValidUUID = (uuid: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
+}
+
 export const ReceiptScanPage: React.FC = () => {
   const [receipts, setReceipts] = useState<ProcessedReceipt[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
@@ -82,8 +88,16 @@ export const ReceiptScanPage: React.FC = () => {
         } : undefined
       }))
       
+      // Filter out receipts with invalid processingIds
+      const validLocalReceipts = localReceipts.filter(r => 
+        r.status === 'completed' && (!r.processingId || isValidUUID(r.processingId))
+      )
+      const validBackendReceipts = backendReceipts.filter(r => 
+        !r.processingId || isValidUUID(r.processingId)
+      )
+      
       // Combine local and backend receipts, and auto-populate confirmedData for completed ones
-      const allReceipts = [...localReceipts.filter(r => r.status === 'completed'), ...backendReceipts]
+      const allReceipts = [...validLocalReceipts, ...validBackendReceipts]
       
       // Auto-populate confirmedData for completed receipts
       const populatedReceipts = allReceipts.map(receipt => {
@@ -107,9 +121,13 @@ export const ReceiptScanPage: React.FC = () => {
       setReceipts(populatedReceipts)
       
       // Start polling for processing jobs
-      backendReceipts.forEach(receipt => {
+      validBackendReceipts.forEach(receipt => {
         if (receipt.status === 'pending' || receipt.status === 'processing') {
-          startPolling(receipt.processingId!)
+          if (receipt.processingId && isValidUUID(receipt.processingId)) {
+            startPolling(receipt.processingId)
+          } else {
+            console.error('Invalid processingId found in active jobs:', receipt.processingId)
+          }
         }
       })
       
@@ -151,9 +169,26 @@ export const ReceiptScanPage: React.FC = () => {
     if (pollingRefs.current[processingId]) {
       return
     }
+    
+    // Validate UUID format before starting polling
+    if (!processingId || !isValidUUID(processingId)) {
+      console.error('Cannot start polling for invalid processingId:', processingId)
+      return
+    }
 
     const poll = async () => {
       try {
+        // Validate UUID format before making API call
+        if (!processingId || !isValidUUID(processingId)) {
+          console.error('Invalid processingId format:', processingId)
+          // Stop polling for invalid UUIDs
+          if (pollingRefs.current[processingId]) {
+            clearTimeout(pollingRefs.current[processingId])
+            delete pollingRefs.current[processingId]
+          }
+          return
+        }
+        
         const response = await receiptAPI.getProgress(processingId)
         const statusData = response.data.data
         
@@ -306,7 +341,6 @@ export const ReceiptScanPage: React.FC = () => {
 
       // Prevent processing if receipt is already completed
       if (receipt.status === 'completed') {
-        console.log('Receipt already processed, skipping...')
         return
       }
 

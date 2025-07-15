@@ -44,7 +44,6 @@ export const TransactionsPage: React.FC = () => {
   const { categories, fetchCategories } = useCategoryStore()
 
   useEffect(() => {
-    console.log('🔧 [TransactionsPage] Component mounted, fetching data...')
     fetchTransactions()
     if (categories.length === 0) {
       fetchCategories()
@@ -61,18 +60,12 @@ export const TransactionsPage: React.FC = () => {
         ...filters
       })
       
-      console.log('🔍 [TransactionsPage] Full response:', response)
-      console.log('🔍 [TransactionsPage] Response data:', response.data)
-      console.log('🔍 [TransactionsPage] Response data keys:', Object.keys(response.data || {}))
       
       // Handle the structured API response
       const apiData = response.data.data
       const transactions = apiData.transactions || []
       const total = apiData.total || 0
       
-      console.log('🔍 [TransactionsPage] API response:', apiData)
-      console.log('🔍 [TransactionsPage] Transactions:', transactions)
-      console.log('🔍 [TransactionsPage] Total count:', total)
       
       setTransactions(transactions)
       setTotalCount(total)
@@ -86,7 +79,6 @@ export const TransactionsPage: React.FC = () => {
   }
 
   const handleDeleteTransaction = (id: string) => {
-    console.log('🚀 [Frontend] Delete button clicked! Transaction ID:', id)
     setTransactionToDelete(id)
     setShowDeleteModal(true)
   }
@@ -95,9 +87,7 @@ export const TransactionsPage: React.FC = () => {
     if (!transactionToDelete) return
 
     try {
-      console.log('🔍 [Frontend] Attempting to delete transaction:', transactionToDelete)
-      const response = await transactionAPI.deleteTransaction(transactionToDelete)
-      console.log('✅ [Frontend] Delete response:', response)
+      await transactionAPI.deleteTransaction(transactionToDelete)
       
       // Close transaction details modal if it's open
       setSelectedTransaction(null)
@@ -121,7 +111,6 @@ export const TransactionsPage: React.FC = () => {
   }
 
   const cancelDelete = () => {
-    console.log('⚠️ [Frontend] Delete cancelled by user')
     setShowDeleteModal(false)
     setTransactionToDelete(null)
   }
@@ -152,8 +141,6 @@ export const TransactionsPage: React.FC = () => {
         transaction_type: newTransaction.transaction_type
       }
 
-      console.log('🔍 [TransactionsPage] Creating transaction with data:', transactionData)
-      console.log('🔍 [TransactionsPage] Categories available:', categories)
 
       await transactionAPI.createTransaction(transactionData)
       
@@ -234,7 +221,6 @@ export const TransactionsPage: React.FC = () => {
         transactionData.vendor_name = editTransaction.vendor_name.trim()
       }
 
-      console.log('🔍 [TransactionsPage] Updating transaction with data:', transactionData)
 
       await transactionAPI.updateTransaction(selectedTransaction.id, transactionData)
       
@@ -611,9 +597,6 @@ export const TransactionsPage: React.FC = () => {
                   <select
                     value={newTransaction.category_id}
                     onChange={(e) => {
-                      console.log('🔍 [TransactionsPage] Category selected:', e.target.value)
-                      const selectedCategory = categories.find(c => c.id === e.target.value)
-                      console.log('🔍 [TransactionsPage] Selected category object:', selectedCategory)
                       setNewTransaction(prev => ({ ...prev, category_id: e.target.value }))
                     }}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

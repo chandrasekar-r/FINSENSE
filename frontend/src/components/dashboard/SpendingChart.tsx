@@ -44,8 +44,6 @@ export const SpendingChart: React.FC<SpendingChartProps> = ({ data, className })
   const { theme } = useTheme()
   const userCurrency = useUserCurrency()
   
-  console.log('🔍 [SpendingChart] Received data:', data)
-  console.log('🔍 [SpendingChart] Data length:', data.length)
 
   return (
     <div className={`bg-card rounded-lg border border-border p-6 ${className}`}>

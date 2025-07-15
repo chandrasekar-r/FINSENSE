@@ -1447,3 +1447,22 @@ TypeError: Object of type UUID is not JSON serializable
 2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
 2025-07-15 07:45:51 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
 2025-07-15 07:51:27 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not authenticated - Status: 403
+2025-07-15 08:11:50 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 08:22:52 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-15 08:22:52 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-15 08:22:52 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-15 08:22:52 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-15 08:22:52 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-15 08:23:00 | ERROR    | src.services.receipt_processing_service:get_processing_status:191 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-15 08:23:00 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-15 08:30:28 | ERROR    | src.services.receipt_processing_service:get_processing_status:191 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-15 08:30:28 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-15 08:36:54 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 08:42:07 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 08:42:09 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 08:44:41 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 09:06:21 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 09:14:27 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
+2025-07-15 09:14:30 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
+2025-07-15 09:14:46 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
+2025-07-15 09:19:20 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400

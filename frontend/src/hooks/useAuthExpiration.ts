@@ -7,12 +7,10 @@ export const useAuthExpiration = () => {
 
   useEffect(() => {
     const handleAuthExpiredEvent = () => {
-      console.log('Auth expired event received, logging out user')
       handleAuthExpired()
     }
 
     const handleTokensRefreshedEvent = () => {
-      console.log('Tokens refreshed event received, syncing with store')
       syncTokensFromStorage()
     }
 

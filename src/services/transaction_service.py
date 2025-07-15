@@ -136,6 +136,8 @@ class TransactionService:
     async def get_transaction(self, user_id: str, transaction_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific transaction"""
         try:
+            logger.info(f"Getting transaction {transaction_id} for user {user_id}")
+            
             query = """
                 SELECT 
                     t.id, t.user_id, t.category_id, t.vendor_name, t.amount, t.tax_amount,
@@ -157,9 +159,11 @@ class TransactionService:
                 )
                 
                 if not transaction:
+                    logger.warning(f"Transaction {transaction_id} not found for user {user_id}")
                     return None
                 
                 result = dict(transaction)
+                logger.info(f"Transaction found. Receipt ID: {result.get('receipt_id')}, Has extracted_data: {bool(result.get('extracted_data'))}")
                 
                 # Fetch receipt items from transaction_line_items
                 try:
@@ -176,6 +180,8 @@ class TransactionService:
                     """
                     items = await db.fetch(items_query, uuid.UUID(transaction_id))
                     
+                    logger.info(f"Found {len(items)} receipt items for transaction {transaction_id}")
+                    
                     if items:
                         receipt_items = [dict(item) for item in items]
                         # Convert UUID and Decimal types to strings/floats for JSON serialization
@@ -185,27 +191,61 @@ class TransactionService:
                             item['price'] = float(item['price'])
                             item['amount'] = float(item['amount'])
                         
+                        logger.debug(f"Receipt items processed: {receipt_items}")
+                        
                         result['receipt_details'] = {
                             'items': receipt_items,
                             'total_items': len(receipt_items),
                             'source': 'transaction_line_items'
                         }
                         
+                        logger.info(f"Receipt details added to result: {len(receipt_items)} items")
+                        
                         # Add OCR text if available from receipt_processing
                         if result.get('extracted_data'):
                             try:
                                 import json
                                 extracted_data = result['extracted_data']
+                                logger.info(f"Processing extracted_data for OCR text. Type: {type(extracted_data)}")
+                                logger.debug(f"extracted_data content: {extracted_data}")
+                                
                                 if isinstance(extracted_data, str):
                                     parsed_data = json.loads(extracted_data)
                                 else:
                                     parsed_data = extracted_data
                                 
-                                # Add OCR text if available
+                                logger.info(f"Parsed data keys: {list(parsed_data.keys()) if isinstance(parsed_data, dict) else 'Not a dict'}")
+                                
+                                # Add OCR text if available - handle nested structure
+                                ocr_text = None
                                 if parsed_data.get('raw_text'):
-                                    result['receipt_details']['extractedText'] = parsed_data['raw_text']
+                                    ocr_text = parsed_data['raw_text']
+                                    logger.info("OCR text found at: raw_text")
+                                elif parsed_data.get('extractedText'):
+                                    ocr_text = parsed_data['extractedText']
+                                    logger.info("OCR text found at: extractedText")
+                                elif parsed_data.get('parsedData', {}).get('extractedText'):
+                                    ocr_text = parsed_data['parsedData']['extractedText']
+                                    logger.info("OCR text found at: parsedData.extractedText")
+                                else:
+                                    logger.warning("OCR text not found in any expected location")
+                                    logger.info(f"Available keys for debugging: {list(parsed_data.keys())}")
+                                
+                                logger.info(f"OCR text found: {bool(ocr_text)}, length: {len(ocr_text) if ocr_text else 0}")
+                                
+                                if ocr_text:
+                                    result['receipt_details']['extractedText'] = ocr_text
+                                    logger.info("OCR text added to receipt_details")
+                                else:
+                                    logger.warning("No OCR text to add to receipt_details")
+                                    # Add a note that OCR text is not available for older receipts
+                                    result['receipt_details']['extractedText'] = "OCR text not available for this receipt. This may be from an older receipt processed before OCR text preservation was implemented."
                             except (json.JSONDecodeError, Exception) as e:
-                                logger.warning(f"Failed to parse receipt extracted_data for OCR text: {e}")
+                                logger.error(f"Failed to parse receipt extracted_data for OCR text: {e}")
+                                import traceback
+                                logger.error(f"Full traceback: {traceback.format_exc()}")
+                        else:
+                            logger.info("No extracted_data found in result for OCR text extraction")
                     else:
                         # Check for legacy receipt_processing data
                         if result.get('extracted_data'):
@@ -217,8 +257,11 @@ class TransactionService:
                                 else:
                                     parsed_data = extracted_data
                                 
-                                # Extract items from parsed_data if available
+                                # Extract items from parsed_data if available - handle nested structure
                                 items_from_ocr = parsed_data.get('items', [])
+                                if not items_from_ocr and parsed_data.get('parsedData'):
+                                    items_from_ocr = parsed_data['parsedData'].get('items', [])
+                                
                                 if items_from_ocr:
                                     result['receipt_details'] = {
                                         'items': items_from_ocr,
@@ -226,9 +269,19 @@ class TransactionService:
                                         'source': 'receipt_processing'
                                     }
                                     
-                                    # Add OCR text if available
+                                    # Add OCR text if available - handle nested structure
+                                    ocr_text = None
                                     if parsed_data.get('raw_text'):
-                                        result['receipt_details']['extractedText'] = parsed_data['raw_text']
+                                        ocr_text = parsed_data['raw_text']
+                                    elif parsed_data.get('extractedText'):
+                                        ocr_text = parsed_data['extractedText']
+                                    elif parsed_data.get('parsedData', {}).get('extractedText'):
+                                        ocr_text = parsed_data['parsedData']['extractedText']
+                                    
+                                    logger.debug(f"OCR text found (fallback): {bool(ocr_text)}, length: {len(ocr_text) if ocr_text else 0}")
+                                    
+                                    if ocr_text:
+                                        result['receipt_details']['extractedText'] = ocr_text
                                 else:
                                     result['receipt_details'] = None
                             except (json.JSONDecodeError, Exception) as e:
@@ -243,7 +296,13 @@ class TransactionService:
                         
                 except Exception as e:
                     logger.error(f"Error fetching receipt items: {e}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
                     result['receipt_details'] = None
+                
+                logger.info(f"Returning transaction result. Has receipt_details: {bool(result.get('receipt_details'))}")
+                if result.get('receipt_details'):
+                    logger.info(f"Receipt details summary: {result['receipt_details'].get('total_items', 0)} items, source: {result['receipt_details'].get('source', 'unknown')}")
                 
                 return result
         
