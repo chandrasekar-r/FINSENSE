@@ -3,6 +3,7 @@ import { transactionAPI, Transaction } from '../lib/api'
 import { format } from 'date-fns'
 import { useCurrency } from '../contexts/CurrencyContext'
 import { useCategoryStore } from '../stores/categoryStore'
+import { TransactionDetailsModal } from '../components/TransactionDetailsModal'
 
 export const TransactionsPage: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -686,18 +687,28 @@ export const TransactionsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Transaction Details Modal */}
-      {selectedTransaction && (
+      {/* Transaction Details Modal - View Mode */}
+      {selectedTransaction && !isEditMode && transactionDetails && (
+        <TransactionDetailsModal
+          transaction={transactionDetails}
+          isOpen={true}
+          onClose={() => {
+            setSelectedTransaction(null)
+            setTransactionDetails(null)
+          }}
+          onEdit={() => handleEditTransaction(selectedTransaction)}
+          onDelete={() => handleDeleteTransaction(selectedTransaction.id)}
+        />
+      )}
+
+      {/* Edit Transaction Modal */}
+      {selectedTransaction && isEditMode && (
         <div className="fixed inset-0 bg-gray-600 dark:bg-gray-900 bg-opacity-50 dark:bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[800px] h-[600px] flex flex-col border border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[600px] border border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white">Transaction Details</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">Edit Transaction</h3>
               <button
-                onClick={() => {
-                  setSelectedTransaction(null)
-                  setTransactionDetails(null)
-                  setIsEditMode(false)
-                }}
+                onClick={cancelEdit}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -706,202 +717,114 @@ export const TransactionsPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
-              {isEditMode ? (
-                /* Edit Form */
-                <form onSubmit={handleUpdateTransaction} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Category *
-                      </label>
-                      <select
-                        value={editTransaction.category_id}
-                        onChange={(e) => setEditTransaction(prev => ({ ...prev, category_id: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        required
-                      >
-                        <option value="">Select a category</option>
-                        {categories.map(category => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Type *
-                      </label>
-                      <select
-                        value={editTransaction.transaction_type}
-                        onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_type: e.target.value as 'income' | 'expense' }))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        <option value="expense">Expense</option>
-                        <option value="income">Income</option>
-                      </select>
-                    </div>
-                  </div>
-
+            <div className="p-6">
+              <form onSubmit={handleUpdateTransaction} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Amount *
+                      Category *
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editTransaction.amount}
-                      onChange={(e) => setEditTransaction(prev => ({ ...prev, amount: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Description *
-                    </label>
-                    <input
-                      type="text"
-                      value={editTransaction.description}
-                      onChange={(e) => setEditTransaction(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="What was this transaction for?"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Merchant
-                    </label>
-                    <input
-                      type="text"
-                      value={editTransaction.vendor_name}
-                      onChange={(e) => setEditTransaction(prev => ({ ...prev, vendor_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Merchant name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={editTransaction.transaction_date}
-                      onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_date: e.target.value }))}
+                    <select
+                      value={editTransaction.category_id}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, category_id: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       required
-                    />
-                  </div>
-
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      type="submit"
-                      className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
                     >
-                      Update Transaction
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelEdit}
-                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                      <option value="">Select a category</option>
+                      {categories.map(category => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Type *
+                    </label>
+                    <select
+                      value={editTransaction.transaction_type}
+                      onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_type: e.target.value as 'income' | 'expense' }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
-                      Cancel
-                    </button>
+                      <option value="expense">Expense</option>
+                      <option value="income">Income</option>
+                    </select>
                   </div>
-                </form>
-              ) : (
-                /* View Mode */
-                <div>
-                  <div className="grid grid-cols-2 gap-6 mb-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Amount</label>
-                      <p className={`text-lg font-semibold ${getTransactionTypeColor(selectedTransaction.transaction_type)}`}>
-                        {getTransactionTypeSign(selectedTransaction.transaction_type)}{formatAmount(selectedTransaction.amount)}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-                      <p className="text-gray-900 dark:text-white capitalize">{selectedTransaction.transaction_type}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
-                      <p className="text-gray-900 dark:text-white">{format(new Date(selectedTransaction.transaction_date), 'MMMM dd, yyyy')}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-                      <p className="text-gray-900 dark:text-white">{selectedTransaction.category_name || 'Uncategorized'}</p>
-                    </div>
-                  </div>
-
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-                    <p className="text-gray-900 dark:text-white">{selectedTransaction.description}</p>
-                  </div>
-
-                  {(selectedTransaction.vendor_name || selectedTransaction.merchant_name) && (
-                    <div className="mb-6">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Merchant</label>
-                      <p className="text-gray-900 dark:text-white">{selectedTransaction.vendor_name || selectedTransaction.merchant_name}</p>
-                    </div>
-                  )}
-
-                  {/* Receipt Information Section */}
-                  {transactionDetails?.receipt_details && (
-                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                      <h4 className="text-md font-medium text-gray-900 dark:text-white mb-4">Receipt Information</h4>
-                      
-                      {transactionDetails.receipt_details.extractedText && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Extracted Text</label>
-                          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
-                            <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                              {transactionDetails.receipt_details.extractedText}
-                            </pre>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="border-t border-gray-200 dark:border-gray-700 p-6 flex justify-between">
-              {!isEditMode && (
-                <button
-                  onClick={() => handleDeleteTransaction(selectedTransaction.id)}
-                  className="px-4 py-2 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors"
-                >
-                  Delete Transaction
-                </button>
-              )}
-              <div className="flex space-x-3 ml-auto">
-                {!isEditMode && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Amount *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editTransaction.amount}
+                    onChange={(e) => setEditTransaction(prev => ({ ...prev, amount: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Description *
+                  </label>
+                  <input
+                    type="text"
+                    value={editTransaction.description}
+                    onChange={(e) => setEditTransaction(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="What was this transaction for?"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Merchant
+                  </label>
+                  <input
+                    type="text"
+                    value={editTransaction.vendor_name}
+                    onChange={(e) => setEditTransaction(prev => ({ ...prev, vendor_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Merchant name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={editTransaction.transaction_date}
+                    onChange={(e) => setEditTransaction(prev => ({ ...prev, transaction_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div className="flex space-x-3 pt-4">
                   <button
-                    onClick={() => handleEditTransaction(selectedTransaction)}
-                    className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
                   >
-                    Edit
+                    Update Transaction
                   </button>
-                )}
-                <button
-                  onClick={() => {
-                    setSelectedTransaction(null)
-                    setTransactionDetails(null)
-                    setIsEditMode(false)
-                  }}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
