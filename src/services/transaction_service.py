@@ -161,31 +161,69 @@ class TransactionService:
                 
                 result = dict(transaction)
                 
-                # Process receipt data if it exists
-                if result.get('extracted_data'):
-                    try:
-                        import json
-                        # Parse the extracted_data JSON string
-                        extracted_data = result['extracted_data']
-                        if isinstance(extracted_data, str):
-                            parsed_data = json.loads(extracted_data)
-                        else:
-                            parsed_data = extracted_data
+                # Fetch receipt items from transaction_line_items
+                try:
+                    items_query = """
+                        SELECT 
+                            id,
+                            item_name as name,
+                            quantity,
+                            unit_price as price,
+                            total_price as amount
+                        FROM transaction_line_items 
+                        WHERE transaction_id = $1
+                        ORDER BY id
+                    """
+                    items = await db.fetch(items_query, uuid.UUID(transaction_id))
+                    
+                    if items:
+                        receipt_items = [dict(item) for item in items]
+                        # Convert UUID and Decimal types to strings/floats for JSON serialization
+                        for item in receipt_items:
+                            item['id'] = str(item['id'])
+                            item['quantity'] = float(item['quantity'])
+                            item['price'] = float(item['price'])
+                            item['amount'] = float(item['amount'])
                         
-                        # Create receipt_details structure similar to frontend expectations
                         result['receipt_details'] = {
-                            'extractedText': '',  # OCR text is not stored separately in current backend
-                            'parsedData': parsed_data,
-                            'parsed_data': parsed_data  # Also include snake_case version for compatibility
+                            'items': receipt_items,
+                            'total_items': len(receipt_items),
+                            'source': 'transaction_line_items'
                         }
-                        
-                        # Clean up the raw extracted_data from the response
+                    else:
+                        # Check for legacy receipt_processing data
+                        if result.get('extracted_data'):
+                            try:
+                                import json
+                                extracted_data = result['extracted_data']
+                                if isinstance(extracted_data, str):
+                                    parsed_data = json.loads(extracted_data)
+                                else:
+                                    parsed_data = extracted_data
+                                
+                                # Extract items from parsed_data if available
+                                items_from_ocr = parsed_data.get('items', [])
+                                if items_from_ocr:
+                                    result['receipt_details'] = {
+                                        'items': items_from_ocr,
+                                        'total_items': len(items_from_ocr),
+                                        'source': 'receipt_processing'
+                                    }
+                                else:
+                                    result['receipt_details'] = None
+                            except (json.JSONDecodeError, Exception) as e:
+                                logger.warning(f"Failed to parse receipt extracted_data: {e}")
+                                result['receipt_details'] = None
+                        else:
+                            result['receipt_details'] = None
+                    
+                    # Clean up the raw extracted_data from the response
+                    if 'extracted_data' in result:
                         del result['extracted_data']
                         
-                    except (json.JSONDecodeError, Exception) as e:
-                        logger.warning(f"Failed to parse receipt extracted_data: {e}")
-                        # Remove the raw extracted_data if it can't be parsed
-                        del result['extracted_data']
+                except Exception as e:
+                    logger.error(f"Error fetching receipt items: {e}")
+                    result['receipt_details'] = None
                 
                 return result
         

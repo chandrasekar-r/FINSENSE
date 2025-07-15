@@ -126,57 +126,63 @@ class ResponseFormatter:
     
     def _extract_budget_from_text(self, raw_response: str) -> Dict[str, Any]:
         """Extract budget information from text response as fallback."""
-        # Extract budget sections using regex
-        budget_pattern = r'### (\d+)\.\s+(.+?)\s+Budget\s*\n(.*?)(?=###|\Z)'
-        matches = re.findall(budget_pattern, raw_response, re.DOTALL)
-        
         budgets = []
         total_spent = 0
         total_budgeted = 0
         
-        for match in matches:
-            index, name, content = match
-            
-            # Extract budget amount
-            budget_match = re.search(r'Budget:\s*\$(\d+(?:\.\d{2})?)', content)
-            budget_amount = float(budget_match.group(1)) if budget_match else 0
-            
-            # Extract spent amount
-            spent_match = re.search(r'Spent so far:\s*\$(\d+(?:\.\d{2})?)', content)
-            spent = float(spent_match.group(1)) if spent_match else 0
-            
-            # Extract remaining amount
-            remaining_match = re.search(r'Remaining:\s*\$(\d+(?:\.\d{2})?)', content)
-            remaining = float(remaining_match.group(1)) if remaining_match else (budget_amount - spent)
-            
-            # Extract percentage
-            percentage_match = re.search(r'Percentage used:\s*(\d+(?:\.\d{2})?)%', content)
-            percentage = float(percentage_match.group(1)) if percentage_match else 0
-            
-            # Determine status
-            status = "On track"
-            if percentage >= 100:
-                status = "Over budget"
-            elif percentage >= 80:
-                status = "Warning"
-            
-            budgets.append({
-                "name": name.strip(),
-                "category": name.lower().replace(' ', '_'),
-                "budget_amount": budget_amount,
-                "spent": spent,
-                "remaining": remaining,
-                "percentage_used": round(percentage, 1),
-                "status": status
-            })
-            
-            total_spent += spent
-            total_budgeted += budget_amount
+        # Split by budget sections
+        sections = re.split(r'###\s+(.+?)\s*\n', raw_response)
         
-        # Extract overall totals if available
-        overall_match = re.search(r'Total spending this month:\s*\$(\d+(?:\.\d{2})?)', raw_response)
-        if overall_match:
-            total_spent = float(overall_match.group(1))
+        for i in range(1, len(sections), 2):
+            if i + 1 < len(sections):
+                section_title = sections[i]
+                section_content = sections[i + 1]
+                
+                # Extract category name (remove "Spending" suffix)
+                category_name = section_title.replace('Spending', '').replace('(', '').replace(')', '').strip()
+                
+                # Extract spent amount
+                spent_match = re.search(r'(?:Total\s+Spent|Spent):\s*\$(\d+(?:\.\d{2})?)', section_content, re.IGNORECASE)
+                spent = float(spent_match.group(1)) if spent_match else 0
+                
+                # Extract budget amount
+                budget_match = re.search(r'\$\d+(?:\.\d{2})?\s+of\s+\$(\d+(?:\.\d{2})?)', section_content)
+                budget_amount = float(budget_match.group(1)) if budget_match else 0
+                
+                # Extract percentage
+                percentage_match = re.search(r'\((\d+(?:\.\d{1,2})?)%\s*used\)', section_content)
+                if percentage_match:
+                    percentage = float(percentage_match.group(1))
+                else:
+                    percentage = (spent / budget_amount * 100) if budget_amount > 0 else 0
+                
+                remaining = budget_amount - spent
+                
+                status = "On track"
+                if percentage >= 100:
+                    status = "Over budget"
+                elif percentage >= 80:
+                    status = "Warning"
+            
+                
+                budgets.append({
+                    "name": category_name,
+                    "category": category_name.lower().replace(' ', '_'),
+                    "budget_amount": budget_amount,
+                    "spent": spent,
+                    "remaining": remaining,
+                    "percentage_used": round(percentage, 1),
+                    "status": status
+                })
+                
+                total_spent += spent
+                total_budgeted += budget_amount
+        
+        # Calculate total from all budgets
+        if not budgets:
+            # Fallback: try to extract overall numbers
+            total_spent_match = re.search(r'Overall.*\$?(\d+(?:\.\d{2})?)', raw_response, re.IGNORECASE)
+            total_spent = float(total_spent_match.group(1)) if total_spent_match else 0
         
         remaining_budget = total_budgeted - total_spent
         

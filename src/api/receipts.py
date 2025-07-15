@@ -12,7 +12,7 @@ async def upload_receipt(
     file: UploadFile = File(...),
     current_user: str = Depends(get_current_user)
 ):
-    """Upload and process receipt"""
+    """Upload receipt and return processing ID immediately for async processing"""
     try:
         # Validate file type
         TESSERACT_SUPPORTED_TYPES = [
@@ -26,39 +26,55 @@ async def upload_receipt(
             'image/x-portable-anymap',
             'application/pdf',
         ]
+        
         # Read file data
         file_data = await file.read()
+        
         # Debug log
         logger.info(f"[RECEIPT UPLOAD] filename={file.filename}, content_type={file.content_type}, size={len(file_data)} bytes")
+        
         if not file.content_type or file.content_type not in TESSERACT_SUPPORTED_TYPES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Unsupported file type. Please upload a JPEG, PNG, TIFF, BMP, GIF, WebP, PNM, or PDF."
             )
+        
         # Validate file size (max 10MB)
         if len(file_data) > 10 * 1024 * 1024:  # 10MB
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="File size too large. Maximum 10MB allowed."
             )
+        
         receipt_service = ReceiptProcessingService()
-        result = await receipt_service.process_receipt_upload(
+        
+        # Create processing record and start async processing
+        processing_record = await receipt_service.create_async_processing_record(
             user_id=current_user,
             file_data=file_data,
             file_name=file.filename or "receipt.jpg",
             file_type=file.content_type or "image/jpeg"
         )
+        
+        # Return immediately with processing ID
         return {
             "success": True,
-            "data": result
+            "data": {
+                "processing_id": processing_record["id"],
+                "status": "pending",
+                "message": "Receipt uploaded successfully. Processing started.",
+                "file_name": file.filename,
+                "file_size": len(file_data)
+            }
         }
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error uploading receipt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process receipt"
+            detail="Failed to upload receipt"
         )
 
 
@@ -121,4 +137,28 @@ async def confirm_receipt_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to confirm receipt data"
+        )
+
+@router.get("/active", response_model=dict)
+async def get_active_processing_jobs(
+    current_user: str = Depends(get_current_user)
+):
+    """Get all active receipt processing jobs for the current user"""
+    try:
+        receipt_service = ReceiptProcessingService()
+        jobs = await receipt_service.get_active_processing_jobs(current_user)
+        
+        return {
+            "success": True,
+            "data": jobs,
+            "count": len(jobs)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting active processing jobs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get active processing jobs"
         )

@@ -78,57 +78,84 @@ export const generateContextualRecommendations = (lastMessage: string, lastRespo
   
   const recommendations: string[] = []
   
-  // Budget-related recommendations
-  if (message.includes('budget') || response.includes('budget')) {
-    recommendations.push("Create a new budget for a category")
-    recommendations.push("Show me my budget performance")
-    recommendations.push("Update my existing budgets")
+  // Dynamic recommendation generation based on AI response content
+  const responseText = lastResponse.toLowerCase()
+  
+  // Grocery and meal planning insights
+  if (responseText.includes('grocery') || responseText.includes('food') || responseText.includes('meal')) {
+    recommendations.push("Show me my grocery spending breakdown")
+    recommendations.push("Compare my grocery costs to eating out")
+    recommendations.push("Find cheaper alternatives for my frequent grocery items")
   }
   
-  // Transaction-related recommendations
-  if (message.includes('transaction') || message.includes('spend') || response.includes('transaction')) {
-    recommendations.push("Add a new expense transaction")
-    recommendations.push("Show me transactions from last week")
-    recommendations.push("Delete an incorrect transaction")
+  // Budget optimization insights
+  if (responseText.includes('budget') || responseText.includes('overspent') || responseText.includes('remaining')) {
+    recommendations.push("Which budget category should I reduce?")
+    recommendations.push("Show me my top spending categories")
+    recommendations.push("How can I optimize my grocery budget?")
   }
   
-  // Analysis-related recommendations
-  if (message.includes('analysis') || message.includes('summary') || response.includes('analysis')) {
-    recommendations.push("Get my spending analysis for this year")
-    recommendations.push("Compare this month to last month")
-    recommendations.push("Show me category breakdown")
+  // Receipt analysis insights
+  if (responseText.includes('receipt') || responseText.includes('items') || responseText.includes('purchased')) {
+    recommendations.push("Analyze my most expensive receipt items")
+    recommendations.push("Find duplicate purchases I can avoid")
+    recommendations.push("Compare prices across different stores")
   }
   
-  // Category-related recommendations
-  if (message.includes('category') || response.includes('category')) {
-    recommendations.push("Create a new spending category")
-    recommendations.push("Show me spending by category")
-    recommendations.push("Update transaction categories")
+  // Category spending insights
+  if (responseText.includes('category') || responseText.includes('spending') || responseText.includes('expensive')) {
+    recommendations.push("Which categories are eating my budget?")
+    recommendations.push("Show seasonal trends in my spending")
+    recommendations.push("Identify my impulse purchases")
   }
   
-  // Receipt-related recommendations
-  if (message.includes('receipt') || message.includes('items') || response.includes('receipt')) {
-    recommendations.push("Show me receipt items from another purchase")
-    recommendations.push("Update incorrect receipt items")
-    recommendations.push("Show me recent receipts")
+  // Transaction pattern analysis
+  if (responseText.includes('transaction') || responseText.includes('pattern') || responseText.includes('weekly')) {
+    recommendations.push("Show me my weekend vs weekday spending")
+    recommendations.push("Find my most frequent merchants")
+    recommendations.push("Track my subscription spending")
   }
   
-  // Add general recommendations if we don't have enough specific ones
+  // Financial optimization queries
+  if (responseText.includes('save') || responseText.includes('reduce') || responseText.includes('cut')) {
+    recommendations.push("Where can I cut $50 from my monthly spending?")
+    recommendations.push("Show me my recurring charges to cancel")
+    recommendations.push("Compare my spending to similar budgets")
+  }
+  
+  // Advanced receipt insights
+  if (responseText.includes('brand') || responseText.includes('generic') || responseText.includes('unit price')) {
+    recommendations.push("Find generic alternatives to save money")
+    recommendations.push("Calculate bulk purchase savings")
+    recommendations.push("Track price changes on my frequent items")
+  }
+  
+  // Meal planning optimization
+  if (message.includes('meal') || message.includes('plan') || response.includes('cook')) {
+    recommendations.push("Plan meals based on my grocery receipts")
+    recommendations.push("Calculate cost per meal from my purchases")
+    recommendations.push("Identify ingredients I'm wasting")
+  }
+  
+  // Smart fallback recommendations based on actual user data context
   if (recommendations.length < 3) {
-    const general = [
-      "Show me my recent transactions",
-      "How am I doing with my budgets?",
-      "What's my total spending this month?",
-      "Add a new expense",
-      "Create a budget for a category",
-      "Get my financial summary"
+    const smartRecommendations = [
+      "What are my most expensive grocery items?",
+      "Show me my food waste patterns from receipts",
+      "Compare my grocery spending to budget",
+      "Find cheaper alternatives for my regular purchases",
+      "Analyze my bulk vs single item savings",
+      "Track seasonal price changes on my groceries",
+      "Identify subscription services I can cancel",
+      "Compare store prices for my frequent items",
+      "Calculate my weekly food cost per person",
+      "Find duplicate purchases across receipts"
     ]
     
-    general.forEach(rec => {
-      if (!recommendations.includes(rec) && recommendations.length < 3) {
-        recommendations.push(rec)
-      }
-    })
+    // Select contextually relevant recommendations
+    const shuffled = smartRecommendations.sort(() => 0.5 - Math.random())
+    const selected = shuffled.slice(0, 3 - recommendations.length)
+    recommendations.push(...selected)
   }
   
   return recommendations.slice(0, 3)

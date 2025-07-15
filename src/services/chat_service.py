@@ -124,28 +124,36 @@ class ChatService:
     async def _build_financial_context(self, user_id: str) -> Dict[str, Any]:
         """Build comprehensive financial context for AI"""
         try:
-            # Get recent transactions
+            # Get recent transactions with receipt data
             from src.models.transaction import TransactionFilter
-            recent_filter = TransactionFilter(limit=10)
+            recent_filter = TransactionFilter(limit=15)
             transaction_result = await self.transaction_service.get_transactions(user_id, recent_filter)
             # Extract transactions list from paginated response
             recent_transactions = transaction_result.get('transactions', []) if isinstance(transaction_result, dict) else transaction_result
             
-            # Get spending summary
+            # Get spending summary with category breakdown
             spending_summary = await self.transaction_service.get_spending_summary(user_id)
             
-            # Get budgets
+            # Get budgets with detailed status
             budgets = await self.budget_service.get_budgets(user_id, include_status=True)
             
             # Get categories
             categories = await self.category_service.get_user_categories(user_id)
+            
+            # Get grocery-specific insights
+            grocery_transactions = [t for t in recent_transactions if t.get('category_name', '').lower() in ['groceries', 'food', 'supermarket']]
+            
+            # Calculate grocery spending insights
+            grocery_total = sum(t.get('amount', 0) for t in grocery_transactions)
             
             return {
                 "totalSpending": spending_summary.get("total_expenses", 0),
                 "recentTransactions": recent_transactions,
                 "budgets": budgets,
                 "categories": categories,
-                "spendingSummary": spending_summary
+                "spendingSummary": spending_summary,
+                "grocerySpending": grocery_total,
+                "groceryTransactions": grocery_transactions
             }
         
         except Exception as e:
@@ -154,7 +162,10 @@ class ChatService:
                 "totalSpending": 0,
                 "recentTransactions": [],
                 "budgets": [],
-                "categories": []
+                "categories": [],
+                "spendingSummary": {},
+                "grocerySpending": 0,
+                "groceryTransactions": []
             }
     
     async def _store_chat_history(self, user_id: str, message: str, response: str, function_calls: Optional[Dict] = None) -> None:

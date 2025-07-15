@@ -1,5 +1,8 @@
 import React from 'react'
 import { TransactionListRenderer } from './responses/TransactionListRenderer'
+import { BudgetBreakdownRenderer } from './responses/BudgetBreakdownRenderer'
+import { ReceiptDetailsRenderer } from './responses/ReceiptDetailsRenderer'
+import { SpendingAnalysisRenderer } from './responses/SpendingAnalysisRenderer'
 
 interface MessageFormatterProps {
   text: string
@@ -54,6 +57,13 @@ export const MessageFormatter: React.FC<MessageFormatterProps> = ({ text, isStre
   }
 
   // Enhanced formatting for AI responses with comprehensive markdown support
+  // First, check if this looks like a budget-style markdown response
+  if ((text.includes('Budget') || text.includes('Spending')) && 
+      (text.includes('spent') || text.includes('remaining') || text.includes('$')) && 
+      text.includes('###')) {
+    return renderBudgetMarkdown(text)
+  }
+  
   const lines = text.split('\n')
   const elements: React.ReactNode[] = []
   let inCodeBlock = false
@@ -197,12 +207,121 @@ export const MessageFormatter: React.FC<MessageFormatterProps> = ({ text, isStre
   return <>{elements}</>
 }
 
+const renderBudgetMarkdown = (text: string) => {
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  
+  
+  lines.forEach((line, index) => {
+    const trimmedLine = line.trim()
+    
+    // Skip empty lines
+    if (!trimmedLine) {
+      return
+    }
+    
+    // Handle section headers (###)
+    if (trimmedLine.startsWith('###')) {
+      const headerText = trimmedLine.replace(/^###\s*/, '')
+      
+      // Style budget sections with cards
+      const isBudgetSection = headerText.includes('Grocery') || headerText.includes('Dining') || headerText.includes('Spending')
+      
+      if (isBudgetSection) {
+        elements.push(
+          <div key={`section-${index}`} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700 mb-4">
+            <h4 className="font-semibold text-gray-900 dark:text-white text-lg mb-3">{headerText}</h4>
+          </div>
+        )
+      } else {
+        elements.push(
+          <h4 key={`header-${index}`} className="text-lg font-semibold text-gray-900 dark:text-white mb-3 mt-4">
+            {headerText}
+          </h4>
+        )
+      }
+      return
+    }
+    
+    // Handle ## headers
+    if (trimmedLine.startsWith('##')) {
+      const headerText = trimmedLine.replace(/^##\s*/, '')
+      elements.push(
+        <h3 key={`header-${index}`} className="text-xl font-bold text-gray-900 dark:text-white mb-3 mt-4">
+          {headerText}
+        </h3>
+      )
+      return
+    }
+    
+    // Handle # headers
+    if (trimmedLine.startsWith('#')) {
+      const headerText = trimmedLine.replace(/^#\s*/, '')
+      elements.push(
+        <h2 key={`header-${index}`} className="text-2xl font-bold text-gray-900 dark:text-white mb-4 mt-6">
+          {headerText}
+        </h2>
+      )
+      return
+    }
+    
+    // Handle bullet points with insights
+    if (trimmedLine.startsWith('-') || trimmedLine.startsWith('•') || trimmedLine.startsWith('*')) {
+      const bulletText = trimmedLine.replace(/^[-•*]\s*/, '').trim()
+      
+      // Color-code insights
+      let insightColor = 'text-gray-700 dark:text-gray-300'
+      if (bulletText.includes('Cost Efficiency') || bulletText.includes('great')) {
+        insightColor = 'text-green-600 dark:text-green-400'
+      } else if (bulletText.includes('Opportunity') || bulletText.includes('Recommend')) {
+        insightColor = 'text-blue-600 dark:text-blue-400'
+      }
+      
+      elements.push(
+        <div key={`bullet-${index}`} className="flex items-start mb-2 ml-4">
+          <span className="text-blue-500 dark:text-blue-400 mr-2 mt-1">▸</span>
+          <span className={`text-sm ${insightColor}`}>{formatInlineText(bulletText)}</span>
+        </div>
+      )
+      return
+    }
+    
+    // Handle lines with dollar amounts
+    if (trimmedLine.includes('$')) {
+      const styledLine = trimmedLine.replace(/\$(\d+(?:\.\d{2})?)/g, '<strong class="text-orange-600 dark:text-orange-400 font-semibold">$$$1</strong>')
+      elements.push(
+        <div key={`amount-${index}`} className="text-gray-700 dark:text-gray-300 mb-1 ml-2">
+          <span dangerouslySetInnerHTML={{ __html: styledLine }} />
+        </div>
+      )
+      return
+    }
+    
+    // Handle regular text
+    if (trimmedLine) {
+      elements.push(
+        <p key={`para-${index}`} className="text-gray-700 dark:text-gray-300 leading-relaxed mb-2">
+          {formatInlineText(trimmedLine)}
+        </p>
+      )
+    }
+  })
+  
+  return <div className="space-y-6">{elements}</div>
+}
+
 const renderStructuredResponse = (jsonResponse: any) => {
   const { type, content } = jsonResponse
   
   switch (type) {
     case 'transaction_list':
       return <TransactionListRenderer content={content} />
+    case 'budget_breakdown':
+      return <BudgetBreakdownRenderer content={content} />
+    case 'receipt_details':
+      return <ReceiptDetailsRenderer content={content} />
+    case 'spending_analysis':
+      return <SpendingAnalysisRenderer content={content} />
     default:
       // Fallback to regular markdown if unknown type
       return formatInlineText(JSON.stringify(jsonResponse, null, 2))

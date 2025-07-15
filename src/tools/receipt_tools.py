@@ -15,7 +15,7 @@ class ReceiptTools(BaseTool):
     
     async def get_receipt_items(self, params: Dict[str, Any], user_id: str) -> ToolResult:
         """
-        Get detailed individual items from a scanned receipt.
+        Get detailed individual items from a scanned receipt. This is MANDATORY after get_transactions.
         
         This tool is MANDATORY when users ask about:
         - Specific items they bought
@@ -23,6 +23,8 @@ class ReceiptTools(BaseTool):
         - Individual product details
         - Itemized breakdown of purchases
         - "Show me the detailed receipt"
+        - "What items I purchased today/this week/etc"
+        - "What I bought"
         
         Args:
             params: Parameters including receipt_id or transaction_id
@@ -30,6 +32,9 @@ class ReceiptTools(BaseTool):
             
         Returns:
             ToolResult with detailed receipt items
+            
+        USAGE: Always call this after get_transactions when users ask about purchases.
+        Use transaction_id from get_transactions results to get item-level details.
         """
         try:
             validated_params = ReceiptItemParams(**params)
@@ -80,15 +85,17 @@ class ReceiptTools(BaseTool):
                         
                         return ToolResult(
                             True,
-                            "No detailed receipt items found for this transaction",
+                            f"Transaction at {transaction['vendor_name']} for €{transaction['amount']} found, but detailed receipt items are not available. This may be because:\n\n1. The receipt hasn't been scanned/processed yet\n2. This was a manual transaction entry\n3. OCR processing is still pending\n\nFor detailed item information, please scan your receipts when adding transactions.",
                             {
-                                "transaction_id": transaction_id,
+                                "transaction_id": str(transaction_id),
                                 "merchant": transaction["vendor_name"],
                                 "date": transaction["transaction_date"],
-                                "total_amount": transaction["amount"],
+                                "total_amount": float(transaction["amount"]),
                                 "currency": transaction["currency"],
                                 "category": transaction["category_name"],
-                                "receipt_items": []
+                                "receipt_items": [],
+                                "has_receipt_items": False,
+                                "note": "Detailed receipt items not available"
                             }
                         )
                     

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { receiptAPI, ReceiptData } from '../lib/api'
 import { useCategoryStore } from '../stores/categoryStore'
 
@@ -8,6 +8,7 @@ interface ProcessedReceipt {
   fileName: string
   fileSize: number
   status: 'pending' | 'processing' | 'completed' | 'error'
+  processingId?: string
   receiptData?: ReceiptData
   confirmedData?: any
   error?: string
@@ -22,33 +23,100 @@ export const ReceiptScanPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const { categories, fetchCategories, findOrCreateCategory } = useCategoryStore()
+  const { categories, fetchCategories } = useCategoryStore()
+  const pollingRefs = useRef<{ [key: string]: NodeJS.Timeout }>({})
 
-  // Load receipts from localStorage on component mount
+  // Load receipts from localStorage and active jobs on component mount
   useEffect(() => {
-    const savedReceipts = localStorage.getItem(STORAGE_KEY)
-    if (savedReceipts) {
-      try {
-        const parsedReceipts = JSON.parse(savedReceipts)
-        // Only restore completed receipts (they don't need file data anymore)
-        const completedReceipts = parsedReceipts
-          .filter((receipt: any) => receipt.status === 'completed')
-          .map((receipt: any) => ({
-            ...receipt,
-            file: new File([], receipt.fileName, { type: 'image/jpeg' }) // Placeholder file for completed receipts
-          }))
-        setReceipts(completedReceipts)
-      } catch (error) {
-        console.error('Failed to load saved receipts:', error)
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    }
+    loadActiveReceipts()
     
     // Load categories
     if (categories.length === 0) {
       fetchCategories()
     }
+    
+    // Cleanup polling on unmount
+    return () => {
+      Object.values(pollingRefs.current).forEach(timeout => clearTimeout(timeout))
+    }
   }, [])
+
+  const loadActiveReceipts = async () => {
+    try {
+      // Load from localStorage first
+      const savedReceipts = localStorage.getItem(STORAGE_KEY)
+      let localReceipts: ProcessedReceipt[] = []
+      
+      if (savedReceipts) {
+        try {
+          const parsedReceipts = JSON.parse(savedReceipts)
+          localReceipts = parsedReceipts.map((receipt: any) => ({
+            ...receipt,
+            file: new File([], receipt.fileName, { type: 'image/jpeg' })
+          }))
+        } catch (error) {
+          console.error('Failed to load saved receipts:', error)
+          localStorage.removeItem(STORAGE_KEY)
+        }
+      }
+      
+      // Load active jobs from backend
+      const response = await receiptAPI.getActiveJobs()
+      const activeJobs = response.data.data || []
+      
+      // Merge local and backend data
+      const backendReceipts: ProcessedReceipt[] = activeJobs.map((job: any) => ({
+        id: job.id,
+        file: new File([], job.file_name, { type: job.file_type || 'image/jpeg' }),
+        fileName: job.file_name,
+        fileSize: job.file_size,
+        status: job.processing_status,
+        processingId: job.id,
+        progress: job.progress_percentage || 0,
+        progressMessage: job.progress_message || 'Processing...',
+        receiptData: job.processing_status === 'completed' ? {
+          receiptId: job.id,
+          extractedText: '',
+          parsedData: job.extracted_data || {},
+          status: 'completed'
+        } : undefined
+      }))
+      
+      // Combine local and backend receipts, and auto-populate confirmedData for completed ones
+      const allReceipts = [...localReceipts.filter(r => r.status === 'completed'), ...backendReceipts]
+      
+      // Auto-populate confirmedData for completed receipts
+      const populatedReceipts = allReceipts.map(receipt => {
+        if (receipt.status === 'completed' && !receipt.confirmedData && receipt.receiptData?.parsedData) {
+          const parsedData = getParsedData(receipt.receiptData)
+          return {
+            ...receipt,
+            confirmedData: {
+              merchantName: parsedData?.merchantName || '',
+              totalAmount: parsedData?.totalAmount || 0,
+              currency: parsedData?.currency || 'USD',
+              category: parsedData?.category || 'other',
+              items: parsedData?.items || [],
+              date: parsedData?.date || ''
+            }
+          }
+        }
+        return receipt
+      })
+      
+      setReceipts(populatedReceipts)
+      
+      // Start polling for processing jobs
+      backendReceipts.forEach(receipt => {
+        if (receipt.status === 'pending' || receipt.status === 'processing') {
+          startPolling(receipt.processingId!)
+        }
+      })
+      
+    } catch (error) {
+      console.error('Failed to load active receipts:', error)
+    }
+  }
 
   // Auto-hide notifications after 5 seconds
   useEffect(() => {
@@ -60,47 +128,6 @@ export const ReceiptScanPage: React.FC = () => {
     }
   }, [notification])
 
-  // Function to automatically create categories from OCR extracted data
-  const autoCreateCategoriesFromOCR = async (receiptData: ReceiptData) => {
-    try {
-      const categoriesToCreate = new Set<string>()
-      
-      // Extract main category from parsed data
-      if (receiptData.parsedData?.category && receiptData.parsedData.category.trim()) {
-        categoriesToCreate.add(receiptData.parsedData.category.trim())
-      }
-      
-      // Extract categories from individual items
-      if (receiptData.parsedData?.items && Array.isArray(receiptData.parsedData.items)) {
-        receiptData.parsedData.items.forEach(item => {
-          if (item.category && item.category.trim()) {
-            categoriesToCreate.add(item.category.trim())
-          }
-        })
-      }
-      
-      // Create categories automatically
-      const createdCategories = []
-      for (const categoryName of categoriesToCreate) {
-        try {
-          const category = await findOrCreateCategory(
-            categoryName,
-            '#3B82F6', // Default blue color
-            '📁' // Default folder icon
-          )
-          createdCategories.push(category)
-          console.log(`✅ [ReceiptScanPage] Auto-created/found category: ${categoryName}`)
-        } catch (error) {
-          console.error(`❌ [ReceiptScanPage] Failed to create category ${categoryName}:`, error)
-        }
-      }
-      
-      return createdCategories
-    } catch (error) {
-      console.error('❌ [ReceiptScanPage] Error auto-creating categories from OCR:', error)
-      return []
-    }
-  }
 
   // Save receipts to localStorage whenever receipts change
   useEffect(() => {
@@ -120,6 +147,64 @@ export const ReceiptScanPage: React.FC = () => {
     }
   }, [receipts])
 
+  const startPolling = useCallback((processingId: string) => {
+    if (pollingRefs.current[processingId]) {
+      return
+    }
+
+    const poll = async () => {
+      try {
+        const response = await receiptAPI.getProgress(processingId)
+        const statusData = response.data.data
+        
+        setReceipts(prev => prev.map(receipt => 
+          receipt.processingId === processingId
+            ? {
+                ...receipt,
+                status: statusData.processing_status,
+                progress: statusData.progress_percentage || 0,
+                progressMessage: statusData.progress_message || 'Processing...',
+                receiptData: statusData.processing_status === 'completed' ? {
+                  receiptId: processingId,
+                  extractedText: '',
+                  parsedData: statusData.extracted_data || {},
+                  status: 'completed'
+                } : undefined,
+                // Auto-populate confirmedData when processing completes
+                confirmedData: statusData.processing_status === 'completed' ? {
+                  merchantName: getParsedData({ parsedData: statusData.extracted_data })?.merchantName || '',
+                  totalAmount: getParsedData({ parsedData: statusData.extracted_data })?.totalAmount || 0,
+                  currency: getParsedData({ parsedData: statusData.extracted_data })?.currency || 'USD',
+                  category: getParsedData({ parsedData: statusData.extracted_data })?.category || 'other',
+                  items: getParsedData({ parsedData: statusData.extracted_data })?.items || [],
+                  date: getParsedData({ parsedData: statusData.extracted_data })?.date || ''
+                } : receipt.confirmedData
+              }
+            : receipt
+        ))
+
+        // Continue polling if still processing
+        if (statusData.processing_status === 'pending' || statusData.processing_status === 'processing') {
+          pollingRefs.current[processingId] = setTimeout(poll, 1000) // Poll every 1 second
+        } else {
+          delete pollingRefs.current[processingId]
+        }
+      } catch (error) {
+        console.error('Polling error:', error)
+        delete pollingRefs.current[processingId]
+      }
+    }
+
+    poll()
+  }, [])
+
+  const stopPolling = useCallback((processingId: string) => {
+    if (pollingRefs.current[processingId]) {
+      clearTimeout(pollingRefs.current[processingId])
+      delete pollingRefs.current[processingId]
+    }
+  }, [])
+
   // Auto-dismiss notification after 5 seconds
   useEffect(() => {
     if (notification) {
@@ -129,6 +214,18 @@ export const ReceiptScanPage: React.FC = () => {
       return () => clearTimeout(timer)
     }
   }, [notification])
+
+  const getParsedData = (receiptData: any) => {
+    if (!receiptData?.parsedData) return null
+    try {
+      return typeof receiptData.parsedData === 'string' 
+        ? JSON.parse(receiptData.parsedData) 
+        : receiptData.parsedData
+    } catch (error) {
+      console.error('Error parsing receipt data:', error)
+      return null
+    }
+  }
 
   const TESSERACT_SUPPORTED_TYPES = [
     'image/jpeg',
@@ -215,88 +312,24 @@ export const ReceiptScanPage: React.FC = () => {
 
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id
-          ? { ...r, status: 'processing', progress: 0 }
+          ? { ...r, status: 'pending', progress: 0 }
           : r
       ))
 
-      // Upload and get processing_id
+      // Upload and get processing_id - now async, returns immediately
       const response = await receiptAPI.uploadReceipt(receipt.file)
       const processingId = response.data.data.processing_id
 
-      // Poll backend for progress
-      let isDone = false
-      while (!isDone) {
-        // eslint-disable-next-line no-await-in-loop
-        const progressRes = await receiptAPI.getProgress(processingId)
-        const statusData = progressRes.data.data
-        const status = statusData.processing_status
-        const progress = statusData.progress_percentage || (status === 'completed' ? 100 : status === 'processing' ? 50 : 0)
-        const progressMessage = statusData.progress_message || status
-        
-        console.log('🔍 [ReceiptScan] Progress update:', {
-          status,
-          progress,
-          progressMessage,
-          statusData
-        })
-        
-        setReceipts(prev => prev.map(r =>
-          r.id === receipt.id ? { ...r, progress, progressMessage } : r
-        ))
-        
-        if (status === 'completed' || status === 'failed') {
-          isDone = true
-        } else {
-          // Wait 500ms before next poll to see progress updates
-          // eslint-disable-next-line no-await-in-loop
-          await new Promise(res => setTimeout(res, 500))
-        }
-      }
-
-      // Get the final processed data
-      const finalData = await receiptAPI.getProgress(processingId)
-      const processedData = finalData.data.data
-      
-      // Parse extracted_data if it's a JSON string
-      let extractedData = processedData.extracted_data
-      console.log('🔍 [ReceiptScan] Raw extracted_data:', extractedData)
-      console.log('🔍 [ReceiptScan] Type of extracted_data:', typeof extractedData)
-      
-      if (typeof extractedData === 'string') {
-        try {
-          extractedData = JSON.parse(extractedData)
-          console.log('🔍 [ReceiptScan] Parsed extracted_data:', extractedData)
-        } catch (e) {
-          console.error('Failed to parse extracted_data:', e)
-          extractedData = {}
-        }
-      }
-
-      // Create proper ReceiptData object
-      const receiptData: ReceiptData = {
-        receiptId: processingId,
-        extractedText: '', // OCR text is not stored separately in current backend
-        parsedData: extractedData || {},
-        status: 'completed'
-      }
-
-      // Auto-create categories from OCR extracted data
-      if (extractedData) {
-        await autoCreateCategoriesFromOCR(receiptData)
-      }
-
-      // Update with completed data
+      // Update receipt with processing ID and start polling
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id
-          ? {
-              ...r,
-              status: 'completed',
-              receiptData: receiptData,
-              confirmedData: extractedData,
-              progress: 100
-            }
+          ? { ...r, processingId, status: 'pending', progress: 0 }
           : r
       ))
+
+      // Start polling for progress updates
+      startPolling(processingId)
+
     } catch (error: any) {
       setReceipts(prev => prev.map(r =>
         r.id === receipt.id
@@ -322,11 +355,15 @@ export const ReceiptScanPage: React.FC = () => {
     }
     
     setIsProcessing(false)
-  }, [receipts])
+  }, [receipts, processReceipt])
 
   const removeReceipt = useCallback((id: string) => {
+    const receipt = receipts.find(r => r.id === id)
+    if (receipt?.processingId) {
+      stopPolling(receipt.processingId)
+    }
     setReceipts(prev => prev.filter(r => r.id !== id))
-  }, [])
+  }, [receipts, stopPolling])
 
   const updateConfirmedData = useCallback((id: string, data: any) => {
     setReceipts(prev => prev.map(r => 
@@ -573,25 +610,39 @@ export const ReceiptScanPage: React.FC = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Merchant:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.merchantName || ''}</p>
+                        <p className="text-gray-600 dark:text-gray-300">
+                          {getParsedData(receipt.receiptData)?.merchantName || ''}
+                        </p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Amount:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.currency} {receipt.receiptData.parsedData?.totalAmount}</p>
+                        <p className="text-gray-600 dark:text-gray-300">
+                          {getParsedData(receipt.receiptData)?.currency || 'USD'} 
+                          {getParsedData(receipt.receiptData)?.totalAmount || 0}
+                        </p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Date:</span>
-                        <p className="text-gray-600 dark:text-gray-300">{receipt.receiptData.parsedData?.date || ''}</p>
+                        <p className="text-gray-600 dark:text-gray-300">
+                          {getParsedData(receipt.receiptData)?.date || ''}
+                        </p>
                       </div>
                       <div>
                         <span className="font-medium text-gray-900 dark:text-white">Category:</span>
-                        <p className="text-gray-600 dark:text-gray-300 capitalize">{receipt.receiptData.parsedData?.category || ''}</p>
+                        <p className="text-gray-600 dark:text-gray-300 capitalize">
+                          {getParsedData(receipt.receiptData)?.category || ''}
+                        </p>
                       </div>
                     </div>
                   </div>
 
                   {/* Per-Item Categorization Table */}
-                  {receipt.receiptData && Array.isArray(receipt.receiptData.parsedData?.items) && receipt.receiptData.parsedData.items.length > 0 && (
+                  {receipt.receiptData && (
+                    () => {
+                      const parsedData = getParsedData(receipt.receiptData);
+                      return Array.isArray(parsedData?.items) && parsedData.items.length > 0;
+                    }
+                  )() && (
                     <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                       <h4 className="font-semibold mb-2 text-gray-900 dark:text-white">Itemized Details</h4>
                       <div className="overflow-x-auto">
@@ -604,31 +655,34 @@ export const ReceiptScanPage: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {receipt.receiptData.parsedData.items.map((item: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="px-2 py-1">{item?.name || ''}</td>
-                                <td className="px-2 py-1">{item?.amount || ''}</td>
-                                <td className="px-2 py-1">
-                                  <input
-                                    type="text"
-                                    value={receipt.confirmedData?.items?.[idx]?.category || item?.category || ''}
-                                    onChange={e => {
-                                      const updatedItems = [...(receipt.confirmedData?.items || receipt.receiptData!.parsedData.items)];
-                                      updatedItems[idx] = {
-                                        ...updatedItems[idx],
-                                        category: e.target.value
-                                      };
-                                      updateConfirmedData(receipt.id, {
-                                        ...receipt.confirmedData,
-                                        items: updatedItems
-                                      });
-                                    }}
-                                    className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                                    placeholder="Category"
-                                  />
-                                </td>
-                              </tr>
-                            ))}
+                            {(() => {
+                              const parsedData = getParsedData(receipt.receiptData);
+                              return parsedData.items.map((item: any, idx: number) => (
+                                <tr key={idx}>
+                                  <td className="px-2 py-1">{item?.name || ''}</td>
+                                  <td className="px-2 py-1">{item?.amount || item?.totalAmount || 0}</td>
+                                  <td className="px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={receipt.confirmedData?.items?.[idx]?.category || item?.category || ''}
+                                      onChange={e => {
+                                        const updatedItems = [...(receipt.confirmedData?.items || parsedData.items)];
+                                        updatedItems[idx] = {
+                                          ...updatedItems[idx],
+                                          category: e.target.value
+                                        };
+                                        updateConfirmedData(receipt.id, {
+                                          ...receipt.confirmedData,
+                                          items: updatedItems
+                                        });
+                                      }}
+                                      className="w-32 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                      placeholder="Category"
+                                    />
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -643,7 +697,8 @@ export const ReceiptScanPage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        value={receipt.confirmedData?.merchantName || ''}
+                        value={receipt.confirmedData?.merchantName || 
+                               getParsedData(receipt.receiptData)?.merchantName || ''}
                         onChange={(e) => updateConfirmedData(receipt.id, {
                           ...receipt.confirmedData,
                           merchantName: e.target.value
@@ -659,7 +714,8 @@ export const ReceiptScanPage: React.FC = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={receipt.confirmedData?.totalAmount || ''}
+                        value={receipt.confirmedData?.totalAmount || 
+                               getParsedData(receipt.receiptData)?.totalAmount || ''}
                         onChange={(e) => updateConfirmedData(receipt.id, {
                           ...receipt.confirmedData,
                           totalAmount: parseFloat(e.target.value)
@@ -674,7 +730,8 @@ export const ReceiptScanPage: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        value={receipt.confirmedData?.category || ''}
+                        value={receipt.confirmedData?.category || 
+                               getParsedData(receipt.receiptData)?.category || ''}
                         onChange={(e) => updateConfirmedData(receipt.id, {
                           ...receipt.confirmedData,
                           category: e.target.value

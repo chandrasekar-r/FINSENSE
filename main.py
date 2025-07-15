@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from src.config.database import init_database
 from src.config.redis import init_redis
-from src.api import auth, users, transactions, budgets, categories, receipts, chat
+from src.api import auth, users, transactions, budgets, categories, receipts, chat, upload
 from src.middleware.error_handler import add_error_handlers
 from src.utils.logger import logger
 
@@ -52,6 +52,10 @@ app.include_router(budgets.router, prefix="/api/budgets", tags=["Budgets"])
 app.include_router(categories.router, prefix="/api/categories", tags=["Categories"])
 app.include_router(receipts.router, prefix="/api/receipts", tags=["Receipts"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+app.include_router(upload.router, prefix="/api/upload", tags=["Upload"])
+
+# Serve uploaded files
+app.mount("/uploads", StaticFiles(directory="/Users/rc/Documents/RCLABS/FINSENSE/uploads"), name="uploads")
 
 # Health check endpoint
 @app.get("/health")

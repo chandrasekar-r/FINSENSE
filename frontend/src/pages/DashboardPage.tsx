@@ -58,17 +58,17 @@ export const DashboardPage: React.FC = () => {
       const prevMonthStart = formatDate(startOfMonth(prevMonth), 'yyyy-MM-dd')
       const prevMonthEnd = formatDate(endOfMonth(prevMonth), 'yyyy-MM-dd')
       
-      // Fetch spending summary
-      const spendingSummaryResponse = await transactionAPI.getSpendingSummary('month')
+      // Fetch spending summary for current month
+      const spendingSummaryResponse = await transactionAPI.getSpendingSummary(currentMonthStart, currentMonthEnd)
       console.log('🔍 [DashboardPage] Spending summary response:', spendingSummaryResponse.data)
       const spendingData = spendingSummaryResponse.data?.data || spendingSummaryResponse.data || {}
       
       // Fetch previous month spending summary
-      const prevSpendingSummaryResponse = await transactionAPI.getSpendingSummary('month')
+      const prevSpendingSummaryResponse = await transactionAPI.getSpendingSummary(prevMonthStart, prevMonthEnd)
       const prevSpendingData = prevSpendingSummaryResponse.data?.data || prevSpendingSummaryResponse.data || {}
 
-      // Fetch category summary
-      const categorySummaryResponse = await transactionAPI.getCategorySummary('month')
+      // Fetch category summary for current month
+      const categorySummaryResponse = await transactionAPI.getCategorySummary(currentMonthStart, currentMonthEnd)
       console.log('🔍 [DashboardPage] Category summary response:', categorySummaryResponse.data)
       const categoryData = categorySummaryResponse.data?.data || categorySummaryResponse.data || []
 

@@ -1345,3 +1345,105 @@ TypeError: Object of type UUID is not JSON serializable
 2025-07-14 12:08:36 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
 2025-07-14 12:08:36 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
 2025-07-14 12:11:44 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 14:31:04 | ERROR    | src.tools.receipt_tools:get_receipt_items:182 - Failed to get receipt items: Database pool not initialized
+2025-07-14 13:43:22 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-14 13:43:22 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 13:43:22 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-14 13:43:22 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-14 13:43:22 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-14 13:44:49 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 14:03:12 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body', 'currency'), 'msg': 'Field required', 'input': {'category_id': '4d851d0a-9c67-4d7e-8dc3-17c163015cce', 'amount': 3.5, 'description': 'Yogurt', 'transaction_date': '2025-07-14', 'vendor_name': 'BOLU', 'transaction_type': 'expense'}, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}, {'type': 'datetime_parsing', 'loc': ('body', 'transaction_date'), 'msg': 'Input should be a valid datetime, invalid datetime separator, expected `T`, `t`, `_` or space', 'input': '2025-07-14', 'ctx': {'error': 'invalid datetime separator, expected `T`, `t`, `_` or space'}, 'url': 'https://errors.pydantic.dev/2.5/v/datetime_parsing'}]
+2025-07-14 15:54:08 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 15:58:20 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-14 15:58:20 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 15:58:20 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-14 15:58:20 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-14 15:58:20 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-14 15:58:41 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body', 'currency'), 'msg': 'Field required', 'input': {'category_id': '4d851d0a-9c67-4d7e-8dc3-17c163015cce', 'amount': 3.5, 'description': 'Yougurt', 'transaction_date': '2025-07-14', 'vendor_name': 'BOLU', 'transaction_type': 'expense'}, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}, {'type': 'datetime_parsing', 'loc': ('body', 'transaction_date'), 'msg': 'Input should be a valid datetime, invalid datetime separator, expected `T`, `t`, `_` or space', 'input': '2025-07-14', 'ctx': {'error': 'invalid datetime separator, expected `T`, `t`, `_` or space'}, 'url': 'https://errors.pydantic.dev/2.5/v/datetime_parsing'}]
+2025-07-14 16:13:03 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body',), 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]
+2025-07-14 16:13:48 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: User with this email already exists - Status: 400
+2025-07-14 16:20:04 | ERROR    | src.api.auth:register_user:33 - Registration error: 'dict' object has no attribute 'email'
+2025-07-14 16:20:04 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Registration failed - Status: 500
+2025-07-14 16:26:24 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: User with this email already exists - Status: 400
+2025-07-14 16:26:47 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid credentials - Status: 401
+2025-07-14 16:28:44 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid credentials - Status: 401
+2025-07-14 16:30:33 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body',), 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]
+2025-07-14 16:30:57 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid credentials - Status: 401
+2025-07-14 16:31:22 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body',), 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]
+2025-07-14 16:32:52 | ERROR    | src.services.category_service:delete_category:215 - Error deleting category: 
+2025-07-14 16:32:52 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to delete category - Status: 500
+2025-07-14 16:33:00 | ERROR    | src.middleware.error_handler:validation_exception_handler:62 - Validation Error: [{'type': 'missing', 'loc': ('body',), 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]
+2025-07-14 17:33:06 | ERROR    | src.utils.auth:verify_token:106 - Token verification error: 
+2025-07-14 17:33:06 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 17:33:09 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-14 17:33:09 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 17:33:09 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-14 17:33:09 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-14 17:33:09 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-14 18:05:13 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 18:10:09 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 18:10:11 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 18:10:14 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 18:36:12 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-14 18:36:12 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 18:36:12 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-14 18:36:12 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-14 18:36:12 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-14 18:36:35 | ERROR    | src.services.receipt_processing_service:get_processing_status:172 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 18:36:35 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 18:36:58 | ERROR    | src.services.receipt_processing_service:_process_receipt_async:315 - Async receipt processing failed for be4e295a-bb1f-42e2-8b44-a073768537d0: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'
+2025-07-14 18:37:00 | ERROR    | src.services.receipt_processing_service:_process_receipt_async:315 - Async receipt processing failed for f1b66eaf-fa7c-43b6-94bd-33a088032e59: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'
+2025-07-14 18:37:12 | ERROR    | src.services.receipt_processing_service:_process_receipt_async:315 - Async receipt processing failed for 03823483-27d5-4d96-9efe-70ea0d1a9765: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'
+2025-07-14 18:38:33 | ERROR    | src.services.receipt_processing_service:get_processing_status:172 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 18:38:33 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 18:39:37 | ERROR    | src.services.receipt_processing_service:_process_receipt_async:315 - Async receipt processing failed for 17e4aa32-aedd-41da-b569-0f9659b43387: 'asyncpg.pgproto.pgproto.UUID' object has no attribute 'replace'
+2025-07-14 18:40:44 | ERROR    | src.services.receipt_processing_service:get_processing_status:172 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 18:40:44 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 19:03:06 | ERROR    | src.services.receipt_processing_service:get_processing_status:187 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 19:03:06 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 19:03:13 | ERROR    | src.services.receipt_processing_service:_process_receipt_async:352 - Async receipt processing failed for 1ea28c28-d08e-42a7-aa66-086d6efc6ff3: name 'asyncio' is not defined
+2025-07-14 21:10:43 | ERROR    | src.config.database:init_database:36 - Database connection failed: Multiple exceptions: [Errno 61] Connect call failed ('::1', 5432, 0, 0), [Errno 61] Connect call failed ('127.0.0.1', 5432)
+2025-07-14 19:14:32 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 19:14:32 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 20:16:54 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 20:16:55 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 20:17:58 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 20:17:58 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 20:54:33 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-14 20:54:33 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-14 20:54:33 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-14 20:54:33 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-14 20:54:33 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-14 20:54:44 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 20:54:44 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 21:18:22 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 21:18:22 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 21:21:47 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-14 21:28:49 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 21:28:49 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-14 21:28:51 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-14 21:28:51 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-15 06:12:23 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 06:12:29 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-15 06:12:29 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-15 06:32:21 | ERROR    | src.services.receipt_processing_service:get_processing_status:188 - Error getting processing status: badly formed hexadecimal UUID string
+2025-07-15 06:32:21 | ERROR    | src.middleware.error_handler:custom_http_exception_handler:27 - HTTP Exception: Failed to get processing status - Status: 500
+2025-07-15 07:22:40 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-15 07:22:40 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-15 07:22:41 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: can't compare offset-naive and offset-aware datetimes
+2025-07-15 07:22:41 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: can't compare offset-naive and offset-aware datetimes
+2025-07-15 07:22:41 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-15 07:33:37 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
+2025-07-15 07:35:53 | ERROR    | src.utils.auth:verify_token:100 - JWT verification error: Signature has expired.
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Could not validate credentials - Status: 401
+2025-07-15 07:35:53 | ERROR    | src.services.auth_service:refresh_tokens:80 - Error refreshing tokens: Refresh token not found or revoked
+2025-07-15 07:35:53 | ERROR    | src.api.auth:refresh_access_token:125 - Token refresh error: Refresh token not found or revoked
+2025-07-15 07:35:53 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Token refresh failed - Status: 500
+2025-07-15 07:45:51 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not Found - Status: 404
+2025-07-15 07:51:27 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Not authenticated - Status: 403

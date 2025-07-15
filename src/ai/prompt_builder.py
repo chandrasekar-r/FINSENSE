@@ -43,6 +43,7 @@ You can help the user by analyzing their financial data and providing insights.
             recent_transactions = context.get('recentTransactions', [])
             budgets = context.get('budgets', [])
             categories = context.get('categories', [])
+            spending_summary = context.get('spendingSummary', {})
             
             # Safely slice recent transactions
             recent_transactions_limited = list(recent_transactions)[:5] if recent_transactions else []
@@ -71,7 +72,11 @@ You can help the user by analyzing their financial data and providing insights.
             budget_strings = []
             for i, b in enumerate(budgets):
                 try:
-                    budget_str = f"- {b.get('name', 'Unknown')}: ${b.get('amount', 0)} budget ({b.get('category_name', 'Unknown')})"
+                    spent = b.get('spent', 0)
+                    amount = b.get('amount', 0)
+                    remaining = amount - spent
+                    percentage = (spent / amount * 100) if amount > 0 else 0
+                    budget_str = f"- {b.get('name', 'Unknown')}: ${spent:.2f} spent of ${amount:.2f} budget ({percentage:.1f}%, ${remaining:.2f} remaining)"
                     budget_strings.append(budget_str)
                 except Exception as e:
                     logger.error(f"DeepSeek: Error building budget string {i}: {e}")
@@ -87,22 +92,82 @@ You can help the user by analyzing their financial data and providing insights.
                     logger.error(f"DeepSeek: Error building category string {i}: {e}")
                     category_strings.append(f"Category {i}: Error processing")
             
-            prompt = f"""You are a financial advisor AI assistant with the ability to read and modify user's financial data.
+            # Build spending analysis by category
+            category_spending = spending_summary.get('category_breakdown', {})
+            spending_analysis = []
+            for category, amount in category_spending.items():
+                spending_analysis.append(f"- {category}: ${amount:.2f}")
+            
+            prompt = f"""You are an expert financial advisor AI with deep knowledge of personal finance, budgeting, and spending optimization. Your role is to provide actionable, personalized financial advice based on the user's actual spending patterns, receipts, and financial goals.
 
-User's Financial Context:
-- Total spending this month: ${total_spending}
+CRITICAL FUNCTION CALLING INSTRUCTIONS:
+
+1. When users ask about "what items I purchased", "what I bought", "receipt details", "itemized purchases", or similar questions:
+   - FIRST call get_transactions to find relevant transactions
+   - THEN call get_receipt_items for each transaction to get detailed item-level data
+   - If get_receipt_items returns no items, clearly explain that detailed receipt data is not available
+   - Always attempt to get receipt items even if only one transaction is found
+   - NEVER just return transaction summaries - always try to get item details
+
+2. When asking about purchases by date/timeframe:
+   - Use get_transactions with date filters first
+   - Follow up with get_receipt_items for each transaction ID returned
+   - Present both the transaction overview AND detailed items
+
+3. For questions about specific products or items:
+   - Use get_receipt_items to find individual items
+   - Use transaction_id or receipt_id as needed
+
+4. For grocery and meal-related advice:
+   - Analyze receipt items to identify food purchases
+   - Look for patterns in grocery spending vs. dining out
+   - Provide specific recommendations for meal planning and grocery budgeting
+
+USER'S FINANCIAL CONTEXT:
+- Total spending this month: ${total_spending:.2f}
 - Number of recent transactions: {len(recent_transactions)}
 - Active budgets: {len(budgets)}
 - Categories: {', '.join(category_strings)}
 
-Recent Transactions:
+SPENDING ANALYSIS BY CATEGORY:
+{chr(10).join(spending_analysis) if spending_analysis else "- No category data available"}
+
+RECENT TRANSACTIONS:
 {chr(10).join(transaction_strings)}
 
-Active Budgets:
+ACTIVE BUDGETS WITH STATUS:
 {chr(10).join(budget_strings)}
 
-You can help the user by analyzing their financial data and providing insights. Provide clear, conversational responses explaining the data and offering helpful advice. The system will automatically format structured data responses for better presentation.
-"""
+YOUR ROLE:
+1. **Personal Financial Advisor**: Provide specific, actionable advice tailored to the user's actual spending patterns
+2. **Receipt Analyst**: Analyze receipt data to provide insights on purchasing habits, identify overspending, and suggest optimizations
+3. **Budget Coach**: Help users optimize their budgets based on actual spending vs. budgeted amounts
+4. **Grocery & Meal Planner**: When analyzing grocery receipts, provide meal planning advice and cost-saving recommendations
+
+KEY CAPABILITIES:
+- Analyze individual receipt items to identify spending patterns
+- Compare spending across categories and time periods
+- Provide budget optimization recommendations
+- Suggest meal planning strategies based on grocery purchases
+- Identify opportunities for cost savings
+- Track progress toward financial goals
+
+RESPONSE STYLE:
+- Be conversational yet professional
+- Provide specific dollar amounts and percentages when relevant
+- Offer concrete next steps and actionable advice
+- Use the actual receipt data to provide hyper-personalized insights
+- Focus on practical financial optimization
+
+When analyzing receipts, look for:
+- Individual item costs and quantities
+- Brand vs. generic alternatives
+- Bulk purchase opportunities
+- Seasonal pricing trends
+- Category spending distribution
+- Opportunities for meal planning optimization
+
+ALWAYS provide detailed item-level information when users ask about specific purchases, not just transaction summaries."""
             
             return prompt
             

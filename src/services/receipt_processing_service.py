@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, List
 import uuid
 import json
+import asyncio
 from datetime import datetime, date
 from src.config.database import DatabaseManager
 from src.services.ocr_service import OCRService
@@ -121,6 +122,10 @@ class ReceiptProcessingService:
     async def get_processing_status(self, user_id: str, processing_id: str) -> Optional[Dict[str, Any]]:
         """Get receipt processing status"""
         try:
+            # Convert string IDs to UUID objects
+            processing_uuid = uuid.UUID(processing_id) if isinstance(processing_id, str) else processing_id
+            user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+            
             # Try to select with progress columns first
             async with DatabaseManager(user_id) as db:
                 try:
@@ -131,13 +136,20 @@ class ReceiptProcessingService:
                         FROM receipt_processing
                         WHERE id = $1 AND user_id = $2
                     """
-                    record = await db.fetchrow(
-                        query, 
-                        uuid.UUID(processing_id), 
-                        uuid.UUID(user_id)
-                    )
-                    return dict(record) if record else None
-                except Exception:
+                    record = await db.fetchrow(query, processing_uuid, user_uuid)
+                    if record:
+                        result = dict(record)
+                        # Convert UUID objects to strings for JSON serialization
+                        if 'id' in result:
+                            result['id'] = str(result['id'])
+                        if 'user_id' in result:
+                            result['user_id'] = str(result['user_id'])
+                        if 'transaction_id' in result and result['transaction_id']:
+                            result['transaction_id'] = str(result['transaction_id'])
+                        return result
+                    return None
+                except Exception as e:
+                    logger.warning(f"Progress columns query failed, falling back: {e}")
                     # Fall back to basic query without progress columns
                     query = """
                         SELECT id, user_id, file_name, file_size, file_type, processing_status,
@@ -145,22 +157,210 @@ class ReceiptProcessingService:
                         FROM receipt_processing
                         WHERE id = $1 AND user_id = $2
                     """
-                    record = await db.fetchrow(
-                        query, 
-                        uuid.UUID(processing_id), 
-                        uuid.UUID(user_id)
-                    )
+                    record = await db.fetchrow(query, processing_uuid, user_uuid)
                     result = dict(record) if record else None
                     # Add default progress fields for backward compatibility
                     if result:
-                        result['progress_percentage'] = 100 if result['processing_status'] == 'completed' else 0
-                        result['progress_message'] = None
+                        # Convert UUID objects to strings for JSON serialization
+                        if 'id' in result:
+                            result['id'] = str(result['id'])
+                        if 'user_id' in result:
+                            result['user_id'] = str(result['user_id'])
+                        if 'transaction_id' in result and result['transaction_id']:
+                            result['transaction_id'] = str(result['transaction_id'])
+                        
+                        status = result['processing_status']
+                        if status == 'completed':
+                            result['progress_percentage'] = 100
+                            result['progress_message'] = 'Processing completed'
+                        elif status == 'processing':
+                            result['progress_percentage'] = 50  # Default for processing
+                            result['progress_message'] = 'Processing in progress...'
+                        elif status == 'pending':
+                            result['progress_percentage'] = 0
+                            result['progress_message'] = 'Waiting to start...'
+                        else:
+                            result['progress_percentage'] = 0
+                            result['progress_message'] = status
                     return result
         
         except Exception as e:
             logger.error(f"Error getting processing status: {e}")
             raise create_error("Failed to get processing status", 500)
+
+    async def get_active_processing_jobs(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all active receipt processing jobs for user"""
+        try:
+            # Convert string ID to UUID object
+            user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+            
+            async with DatabaseManager(user_id) as db:
+                query = """
+                    SELECT id, user_id, file_name, file_size, file_type, processing_status,
+                           extracted_data, confidence_score, created_at, updated_at, transaction_id,
+                           progress_percentage, progress_message
+                    FROM receipt_processing
+                    WHERE user_id = $1 
+                    AND processing_status IN ('pending', 'processing')
+                    ORDER BY created_at DESC
+                """
+                
+                rows = await db.fetch(query, user_uuid)
+                results = []
+                for row in rows:
+                    result = dict(row)
+                    # Convert UUID objects to strings for JSON serialization
+                    if 'id' in result:
+                        result['id'] = str(result['id'])
+                    if 'user_id' in result:
+                        result['user_id'] = str(result['user_id'])
+                    if 'transaction_id' in result and result['transaction_id']:
+                        result['transaction_id'] = str(result['transaction_id'])
+                    results.append(result)
+                return results
+        
+        except Exception as e:
+            logger.error(f"Error getting active processing jobs: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return []
     
+    async def create_async_processing_record(
+        self, 
+        user_id: str, 
+        file_data: bytes, 
+        file_name: str, 
+        file_type: str
+    ) -> Dict[str, Any]:
+        """Create processing record and start async processing"""
+        try:
+            import asyncio
+            
+            # Create initial processing record
+            query = """
+                INSERT INTO receipt_processing (user_id, file_name, file_size, file_type, processing_status, progress_percentage, progress_message)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id, user_id, file_name, file_size, file_type, processing_status, created_at
+            """
+            
+            async with DatabaseManager(user_id) as db:
+                record = await db.fetchrow(
+                    query,
+                    uuid.UUID(user_id),
+                    file_name,
+                    len(file_data),
+                    file_type,
+                    "pending",
+                    0,
+                    "Uploading receipt..."
+                )
+                processing_record = dict(record)
+                # Convert UUID objects to strings for JSON serialization
+                if 'id' in processing_record:
+                    processing_record['id'] = str(processing_record['id'])
+                if 'user_id' in processing_record:
+                    processing_record['user_id'] = str(processing_record['user_id'])
+            
+            # Start async processing in the background
+            asyncio.create_task(self._process_receipt_async(
+                user_id=user_id,
+                processing_id=processing_record["id"],
+                file_data=file_data,
+                file_name=file_name,
+                file_type=file_type
+            ))
+            
+            return processing_record
+        
+        except Exception as e:
+            logger.error(f"Error creating async processing record: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise create_error("Failed to create processing record", 500)
+
+    async def _process_receipt_async(
+        self, 
+        user_id: str, 
+        processing_id: str, 
+        file_data: bytes, 
+        file_name: str, 
+        file_type: str
+    ) -> None:
+        """Process receipt asynchronously"""
+        try:
+            # Convert processing_id to UUID object if it's a string
+            processing_uuid = uuid.UUID(processing_id) if isinstance(processing_id, str) else processing_id
+            
+            # Update status to processing
+            await self._update_processing_status_with_progress(
+                processing_uuid, "processing", 5, "Starting OCR text extraction..."
+            )
+            
+            # Add a small delay to make progress visible
+            await asyncio.sleep(0.5)
+            
+            # Extract text with Node.js OCR (no preprocessing)
+            extracted_text = await self.ocr_service.extract_text_from_image(file_data)
+            
+            if not extracted_text.strip():
+                await self._update_processing_status(
+                    processing_uuid, "failed", "No text could be extracted from the image"
+                )
+                return
+            
+            # Update progress after OCR completion
+            await self._update_processing_status_with_progress(
+                processing_uuid, "processing", 35, "OCR completed, parsing receipt data..."
+            )
+            
+            # Add delay to see progress
+            await asyncio.sleep(0.5)
+            
+            # Parse receipt data with AI
+            parsed_data = await self.deepseek_service.parse_receipt_data(extracted_text)
+            
+            # Update progress after AI parsing
+            await self._update_processing_status_with_progress(
+                processing_uuid, "processing", 65, "Receipt data parsed, creating categories..."
+            )
+            
+            # Add delay to see progress
+            await asyncio.sleep(0.5)
+            
+            # Find or create category (but don't assign it to transaction yet)
+            category = await self._find_or_create_category(
+                user_id, parsed_data.get("category", "other")
+            )
+            
+            # Update progress before completion
+            await self._update_processing_status_with_progress(
+                processing_uuid, "processing", 85, "Finalizing receipt processing..."
+            )
+            
+            # Final delay before completion
+            await asyncio.sleep(0.5)
+            
+            # Update processing record with extracted data only (no transaction yet)
+            await self._update_processing_record(
+                processing_uuid,
+                status="completed",
+                extracted_data=parsed_data,
+                confidence_score=None,
+                transaction_id=None,
+                progress_percentage=100,
+                progress_message="Receipt processing completed - ready for review"
+            )
+            
+            logger.info(f"Receipt processed successfully: {processing_id} - awaiting user confirmation")
+            
+        except Exception as e:
+            logger.error(f"Async receipt processing failed for {processing_id}: {e}")
+            # Convert processing_id to UUID object if it's a string
+            processing_uuid = uuid.UUID(processing_id) if isinstance(processing_id, str) else processing_id
+            await self._update_processing_status(
+                processing_uuid, "failed", str(e)
+            )
+
     async def _create_processing_record(
         self, 
         user_id: str, 
@@ -200,6 +400,9 @@ class ReceiptProcessingService:
     ) -> None:
         """Update processing status"""
         try:
+            # Ensure processing_id is a UUID object
+            processing_uuid = uuid.UUID(str(processing_id)) if not isinstance(processing_id, uuid.UUID) else processing_id
+            
             if error_message:
                 query = """
                     UPDATE receipt_processing
@@ -211,7 +414,7 @@ class ReceiptProcessingService:
                 
                 # Use a generic user context for this update
                 async with DatabaseManager() as db:
-                    await db.execute(query, status, json.dumps(error_data), processing_id)
+                    await db.execute(query, status, json.dumps(error_data), processing_uuid)
             else:
                 query = """
                     UPDATE receipt_processing
@@ -220,7 +423,7 @@ class ReceiptProcessingService:
                 """
                 
                 async with DatabaseManager() as db:
-                    await db.execute(query, status, processing_id)
+                    await db.execute(query, status, processing_uuid)
         
         except Exception as e:
             logger.error(f"Error updating processing status: {e}")
@@ -235,7 +438,10 @@ class ReceiptProcessingService:
     ) -> None:
         """Update processing status with progress information"""
         try:
-            logger.info(f"Updating progress: {processing_id} -> {progress_percentage}% - {progress_message}")
+            # Ensure processing_id is a UUID object
+            processing_uuid = uuid.UUID(str(processing_id)) if not isinstance(processing_id, uuid.UUID) else processing_id
+            
+            logger.info(f"Updating progress: {processing_uuid} -> {progress_percentage}% - {progress_message}")
             # Check if progress columns exist, if not add them dynamically
             async with DatabaseManager() as db:
                 # First ensure progress columns exist
@@ -261,13 +467,13 @@ class ReceiptProcessingService:
                         status,
                         progress_percentage,
                         progress_message,
-                        processing_id
+                        processing_uuid
                     )
                     logger.info(f"Progress updated successfully: {progress_percentage}% - {progress_message}")
                 except Exception as e:
                     # Fall back to basic status update
                     logger.warning(f"Could not update with progress, falling back to basic update: {e}")
-                    await self._update_processing_status(processing_id, status, error_message)
+                    await self._update_processing_status(processing_uuid, status, error_message)
         
         except Exception as e:
             logger.error(f"Error updating processing status with progress: {e}")
@@ -294,15 +500,23 @@ class ReceiptProcessingService:
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = $7
                     """
+                    # Ensure processing_id is a UUID object
+                    processing_uuid = uuid.UUID(str(processing_id)) if not isinstance(processing_id, uuid.UUID) else processing_id
+                    
+                    # Ensure transaction_id is a UUID object if provided
+                    transaction_uuid = None
+                    if transaction_id:
+                        transaction_uuid = uuid.UUID(str(transaction_id)) if not isinstance(transaction_id, uuid.UUID) else transaction_id
+
                     await db.execute(
                         query,
                         status,
                         json.dumps(extracted_data) if extracted_data else None,
                         confidence_score,
-                        transaction_id,
+                        transaction_uuid,
                         progress_percentage,
                         progress_message,
-                        processing_id
+                        processing_uuid
                     )
                 except Exception:
                     # Fall back to basic update without progress columns
@@ -312,13 +526,22 @@ class ReceiptProcessingService:
                             transaction_id = $4, updated_at = CURRENT_TIMESTAMP
                         WHERE id = $5
                     """
+                    
+                    # Ensure processing_id is a UUID object
+                    processing_uuid = uuid.UUID(str(processing_id)) if not isinstance(processing_id, uuid.UUID) else processing_id
+                    
+                    # Ensure transaction_id is a UUID object if provided
+                    transaction_uuid = None
+                    if transaction_id:
+                        transaction_uuid = uuid.UUID(str(transaction_id)) if not isinstance(transaction_id, uuid.UUID) else transaction_id
+
                     await db.execute(
                         query,
                         status,
                         json.dumps(extracted_data) if extracted_data else None,
                         confidence_score,
-                        transaction_id,
-                        processing_id
+                        transaction_uuid,
+                        processing_uuid
                     )
         
         except Exception as e:

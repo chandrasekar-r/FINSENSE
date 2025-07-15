@@ -3,7 +3,7 @@
 from typing import Dict, Any
 from datetime import date
 from src.tools.base import BaseTool, ToolResult
-from src.tools.models import TransactionCreateParams, TransactionUpdateParams, TransactionFilterParams
+from src.tools.models import TransactionCreateParams, TransactionUpdateParams, TransactionFilterParams, SpendingAnalysisParams
 from src.services.transaction_service import TransactionService
 from src.models.transaction import TransactionCreate, TransactionUpdate, TransactionFilter
 
@@ -115,7 +115,7 @@ class TransactionTools(BaseTool):
     
     async def get_transactions(self, params: Dict[str, Any], user_id: str) -> ToolResult:
         """
-        Get transactions with optional filters.
+        Get transactions with optional filters. Use this as a FIRST step when users ask about purchases.
         
         Args:
             params: Filter parameters including date ranges, categories, etc.
@@ -123,6 +123,9 @@ class TransactionTools(BaseTool):
             
         Returns:
             ToolResult with list of transactions
+            
+        IMPORTANT: After getting transactions, ALWAYS follow up with get_receipt_items 
+        for each transaction_id if the user asks about specific items they purchased.
         """
         try:
             validated_params = TransactionFilterParams(**params)

@@ -113,6 +113,7 @@ export interface Transaction {
   category_name?: string
   category_color?: string
   category_icon?: string
+  receipt_url?: string
   created_at: string
   updated_at: string
   receipt_id?: string
@@ -219,6 +220,28 @@ export interface ReceiptData {
   status: string
 }
 
+export interface ProcessingStatus {
+  processing_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  progress_percentage: number
+  progress_message: string
+  extracted_data?: any
+  file_name?: string
+  file_size?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ActiveProcessingJob {
+  processingId: string
+  fileName: string
+  fileSize: number
+  uploadTime: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  progress: number
+  progressMessage: string
+}
+
 // API Functions
 
 // Auth
@@ -268,9 +291,20 @@ export const transactionAPI = {
     amount: number
     description: string
     transaction_date?: string
+    vendor_name?: string
     merchant_name?: string
     transaction_type?: 'income' | 'expense'
-  }) => api.post('/transactions', data),
+    currency?: string
+  }) => {
+    // Ensure currency is provided, default to USD
+    const transactionData = {
+      ...data,
+      currency: data.currency || 'USD',
+      vendor_name: data.vendor_name || data.merchant_name,
+      transaction_date: data.transaction_date ? new Date(data.transaction_date).toISOString() : new Date().toISOString()
+    }
+    return api.post('/transactions', transactionData)
+  },
   
   getTransaction: (id: string) => api.get(`/transactions/${id}`),
   
@@ -278,12 +312,33 @@ export const transactionAPI = {
     api.put(`/transactions/${id}`, data),
   
   deleteTransaction: (id: string) => api.delete(`/transactions/${id}`),
+
+  uploadReceipt: (transactionId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/upload/receipt/${transactionId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+
+  deleteReceipt: (transactionId: string) => 
+    api.delete(`/upload/receipt/${transactionId}`),
   
-  getSpendingSummary: (period: string = 'month') => 
-    api.get('/transactions/summary/spending', { params: { period } }),
+  getSpendingSummary: (startDate?: string, endDate?: string) => {
+    const params: any = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    return api.get('/transactions/summary/spending', { params })
+  },
   
-  getCategorySummary: (period: string = 'month') => 
-    api.get('/transactions/summary/categories', { params: { period } }),
+  getCategorySummary: (startDate?: string, endDate?: string) => {
+    const params: any = {}
+    if (startDate) params.start_date = startDate
+    if (endDate) params.end_date = endDate
+    return api.get('/transactions/summary/categories', { params })
+  },
 }
 
 // Receipts
@@ -304,6 +359,8 @@ export const receiptAPI = {
     api.put(`/receipts/${id}/confirm`, { confirmedData }),
   
   getProgress: (processingId: string) => api.get(`/receipts/${processingId}`),
+  
+  getActiveJobs: () => api.get('/receipts/active'),
 }
 
 // Chat

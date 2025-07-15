@@ -9,6 +9,8 @@ import { Table } from '../components/ui/Table'
 import { Pagination } from '../components/ui/Pagination'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { ReceiptUpload } from '../components/receipts/ReceiptUpload'
+import { FileText } from 'lucide-react'
 
 interface TransactionFormData {
   category_id: string
@@ -93,9 +95,10 @@ export const TransactionsPage: React.FC = () => {
         category_id: transactionForm.category_id,
         amount: parseFloat(transactionForm.amount),
         description: transactionForm.description,
-        transaction_date: transactionForm.transaction_date,
+        transaction_date: transactionForm.transaction_date + 'T12:00:00.000Z',
         vendor_name: transactionForm.vendor_name || '',
-        transaction_type: transactionForm.transaction_type
+        transaction_type: transactionForm.transaction_type,
+        currency: 'EUR'
       }
 
       await transactionAPI.createTransaction(transactionData)
@@ -123,7 +126,8 @@ export const TransactionsPage: React.FC = () => {
         description: transactionForm.description.trim(),
         transaction_date: transactionForm.transaction_date + 'T12:00:00.000Z',
         vendor_name: transactionForm.vendor_name?.trim() || undefined,
-        transaction_type: transactionForm.transaction_type
+        transaction_type: transactionForm.transaction_type,
+        currency: 'EUR'
       }
 
       await transactionAPI.updateTransaction(selectedTransaction.id, transactionData)
@@ -595,32 +599,105 @@ export const TransactionsPage: React.FC = () => {
               </div>
             )}
 
+            {/* Receipt Upload */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Receipt</h4>
+              <ReceiptUpload
+                transactionId={selectedTransaction.id}
+                onUpload={(receiptUrl) => {
+                  // Update the transaction with new receipt URL
+                  setSelectedTransaction(prev => prev ? {
+                    ...prev,
+                    receipt_url: receiptUrl
+                  } : null);
+                  // Refresh transaction details
+                  handleViewTransactionDetails(selectedTransaction);
+                }}
+                onDelete={() => {
+                  // Remove receipt URL from transaction
+                  setSelectedTransaction(prev => prev ? {
+                    ...prev,
+                    receipt_url: undefined
+                  } : null);
+                  // Refresh transaction details
+                  handleViewTransactionDetails(selectedTransaction);
+                }}
+                currentReceiptUrl={selectedTransaction.receipt_url}
+              />
+            </div>
+
             {/* Receipt Information Section */}
-            {transactionDetails?.receipt_details && (
+            {transactionDetails?.receipt_details && transactionDetails.receipt_details.items && transactionDetails.receipt_details.items.length > 0 && (
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Receipt Items</h4>
+                
+                <div className="space-y-3">
+                  {transactionDetails.receipt_details.items.map((item: { id: string; name: string; quantity: number; price: number; amount: number }, index: number) => (
+                    <div key={item.id || index} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {item.quantity} × €{item.price.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          €{item.amount.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <div className="border-t border-gray-200 dark:border-gray-600 pt-3 mt-3">
+                    <div className="flex justify-between items-center font-medium">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Total Items:</span>
+                      <span className="text-sm text-gray-900 dark:text-white">
+                        {transactionDetails.receipt_details.items.length} items
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Legacy OCR Data (fallback) */}
+            {transactionDetails?.receipt_details?.extractedText && (
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Receipt Information</h4>
-                
-                {transactionDetails.receipt_details.extractedText && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Extracted Text</label>
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
-                      <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                        {transactionDetails.receipt_details.extractedText}
-                      </pre>
-                    </div>
-                  </div>
-                )}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 max-h-48 overflow-y-auto">
+                  <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
+                    {transactionDetails.receipt_details.extractedText}
+                  </pre>
+                </div>
+              </div>
+            )}
 
-                {transactionDetails.receipt_details.parsedData && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Parsed Receipt Data</label>
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                      <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed">
-                        {JSON.stringify(transactionDetails.receipt_details.parsedData, null, 2)}
-                      </pre>
+            {/* Display uploaded receipt image */}
+            {selectedTransaction.receipt_url && (
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Uploaded Receipt</h4>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  {selectedTransaction.receipt_url.endsWith('.pdf') ? (
+                    <div className="flex items-center space-x-2 text-blue-600">
+                      <FileText className="w-4 h-4" />
+                      <a
+                        href={`http://localhost:3000${selectedTransaction.receipt_url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm hover:underline"
+                      >
+                        View PDF Receipt
+                      </a>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <img
+                      src={`http://localhost:3000${selectedTransaction.receipt_url}`}
+                      alt="Receipt"
+                      className="max-w-full h-auto rounded-lg border border-gray-200 dark:border-gray-600"
+                      style={{ maxHeight: '400px' }}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
