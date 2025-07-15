@@ -1466,3 +1466,4 @@ TypeError: Object of type UUID is not JSON serializable
 2025-07-15 09:14:30 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
 2025-07-15 09:14:46 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: File not found - Status: 404
 2025-07-15 09:19:20 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400
+2025-07-15 09:27:11 | ERROR    | src.middleware.error_handler:http_exception_handler:47 - HTTP Exception: Invalid processing ID format - Status: 400

@@ -190,6 +190,11 @@ export const TransactionsPage: React.FC = () => {
     try {
       const response = await transactionAPI.getTransaction(transaction.id)
       const transactionDetailData = response.data?.data || response.data || {}
+      console.log('Transaction details response:', response)
+      console.log('Transaction detail data:', transactionDetailData)
+      console.log('Receipt details:', transactionDetailData.receipt_details)
+      console.log('Receipt items:', transactionDetailData.receipt_details?.items)
+      console.log('Receipt items length:', transactionDetailData.receipt_details?.items?.length)
       setTransactionDetails(transactionDetailData)
     } catch (error) {
       console.error('Failed to fetch transaction details:', error)
@@ -627,6 +632,15 @@ export const TransactionsPage: React.FC = () => {
             </div>
 
             {/* Receipt Information Section */}
+            {(() => {
+              console.log('Receipt render check:')
+              console.log('transactionDetails:', transactionDetails)
+              console.log('transactionDetails?.receipt_details:', transactionDetails?.receipt_details)
+              console.log('transactionDetails?.receipt_details?.items:', transactionDetails?.receipt_details?.items)
+              console.log('Array.isArray(items):', Array.isArray(transactionDetails?.receipt_details?.items))
+              console.log('items.length:', transactionDetails?.receipt_details?.items?.length)
+              return null
+            })()}
             {transactionDetails?.receipt_details && transactionDetails.receipt_details.items && transactionDetails.receipt_details.items.length > 0 && (
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">Receipt Items</h4>

@@ -767,10 +767,25 @@ class ReceiptProcessingService:
                 logger.warning("No items found in confirmed data - line items will not be saved")
             
             # Update processing record with transaction ID
+            # Preserve the original extracted_data with OCR text, but update with confirmed data
+            updated_extracted_data = status_data.get('extracted_data', {})
+            if isinstance(updated_extracted_data, str):
+                import json
+                updated_extracted_data = json.loads(updated_extracted_data)
+            
+            logger.info(f"Original extracted_data keys: {list(updated_extracted_data.keys())}")
+            logger.info(f"Has raw_text: {bool(updated_extracted_data.get('raw_text'))}")
+            
+            # Update with confirmed data while preserving OCR text
+            updated_extracted_data.update(confirmed_data)
+            
+            logger.info(f"Updated extracted_data keys: {list(updated_extracted_data.keys())}")
+            logger.info(f"Still has raw_text: {bool(updated_extracted_data.get('raw_text'))}")
+            
             await self._update_processing_record(
                 uuid.UUID(processing_id),
                 status="completed",
-                extracted_data=confirmed_data,
+                extracted_data=updated_extracted_data,
                 confidence_score=status_data.get('confidence_score'),
                 transaction_id=transaction["id"]
             )
