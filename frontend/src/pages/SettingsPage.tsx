@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { userAPI } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+import { useCurrency } from '../contexts/CurrencyContext'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { User, Settings, Bell, Globe, Trash2, Save } from 'lucide-react'
 
@@ -18,6 +19,7 @@ interface UserProfile {
 
 export const SettingsPage: React.FC = () => {
   const { logout } = useAuthStore()
+  const { currency, setCurrency } = useCurrency()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,11 +92,11 @@ export const SettingsPage: React.FC = () => {
       setProfileForm({
         first_name: profileData.first_name || '',
         last_name: profileData.last_name || '',
-        default_currency: profileData.default_currency || 'USD'
+        default_currency: profileData.default_currency || currency
       })
 
       setSettingsForm({
-        default_currency: settingsData.default_currency || 'USD',
+        default_currency: settingsData.default_currency || currency,
         date_format: settingsData.date_format || 'MM/DD/YYYY',
         timezone: settingsData.timezone || 'America/New_York',
         notification_preferences: settingsData.notification_preferences || {
@@ -118,6 +120,12 @@ export const SettingsPage: React.FC = () => {
 
     try {
       await userAPI.updateProfile(profileForm)
+      
+      // Update global currency if it changed
+      if (profileForm.default_currency !== currency) {
+        await setCurrency(profileForm.default_currency)
+      }
+      
       setSuccess('Profile updated successfully!')
       fetchUserData()
     } catch (error: any) {
@@ -132,6 +140,12 @@ export const SettingsPage: React.FC = () => {
 
     try {
       await userAPI.updateSettings(settingsForm)
+      
+      // Update global currency if it changed
+      if (settingsForm.default_currency !== currency) {
+        await setCurrency(settingsForm.default_currency)
+      }
+      
       setSuccess('Settings updated successfully!')
       fetchUserData()
     } catch (error: any) {

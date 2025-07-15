@@ -7,6 +7,9 @@ import App from './App.tsx'
 import './index.css'
 import { ThemeProvider } from './contexts/ThemeContext'
 
+// Register service worker for PWA - Vite PWA handles this automatically
+import './pwa'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -15,10 +15,9 @@ import {
   Plus,
   Scan
 } from 'lucide-react'
-import { format, subDays, parseISO, startOfMonth, endOfMonth, subMonths, format as formatDate } from 'date-fns'
+import { format, startOfMonth, endOfMonth, subMonths, subDays, format as formatDate } from 'date-fns'
 import { Button } from '../components/ui/Button'
-import { formatCurrency } from '../lib/utils'
-import { useUserCurrency } from '../stores/authStore'
+import { useCurrency } from '../contexts/CurrencyContext'
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate()
@@ -35,7 +34,7 @@ export const DashboardPage: React.FC = () => {
   const [categorySpending, setCategorySpending] = useState<any[]>([])
   const [spendingChartData, setSpendingChartData] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const userCurrency = useUserCurrency()
+  const { formatAmount } = useCurrency()
 
   useEffect(() => {
     fetchDashboardData()
@@ -59,34 +58,31 @@ export const DashboardPage: React.FC = () => {
       const prevMonthStart = formatDate(startOfMonth(prevMonth), 'yyyy-MM-dd')
       const prevMonthEnd = formatDate(endOfMonth(prevMonth), 'yyyy-MM-dd')
       
-      // Fetch spending summary
-      const spendingSummaryResponse = await transactionAPI.getSpendingSummary('month')
-      const spendingData = spendingSummaryResponse.data.data
+      // Fetch spending summary for current month
+      const spendingSummaryResponse = await transactionAPI.getSpendingSummary(currentMonthStart, currentMonthEnd)
+      const spendingData = spendingSummaryResponse.data?.data || spendingSummaryResponse.data || {}
       
       // Fetch previous month spending summary
-      const prevSpendingSummaryResponse = await transactionAPI.getSpendingSummary('month')
-      const prevSpendingData = prevSpendingSummaryResponse.data.data
+      const prevSpendingSummaryResponse = await transactionAPI.getSpendingSummary(prevMonthStart, prevMonthEnd)
+      const prevSpendingData = prevSpendingSummaryResponse.data?.data || prevSpendingSummaryResponse.data || {}
 
-      // Fetch category summary
-      const categorySummaryResponse = await transactionAPI.getCategorySummary('month')
-      const categoryData = categorySummaryResponse.data.data
+      // Fetch category summary for current month
+      const categorySummaryResponse = await transactionAPI.getCategorySummary(currentMonthStart, currentMonthEnd)
+      const categoryData = categorySummaryResponse.data?.data || categorySummaryResponse.data || []
 
       // Fetch recent transactions
       const transactionsResponse = await transactionAPI.getTransactions({ limit: 10 })
-      const transactions = transactionsResponse.data.data?.transactions || []
+      const transactionData = transactionsResponse.data?.data || transactionsResponse.data || {}
+      const transactions = transactionData.transactions || transactionData || []
 
       // Fetch all transactions for chart data
       const allTransactionsResponse = await transactionAPI.getTransactions({ limit: 100 })
-      const allTransactions = allTransactionsResponse.data.data?.transactions || []
-      console.log('🔍 [DashboardPage] All transactions fetched:', allTransactions.length)
-      console.log('🔍 [DashboardPage] Sample transaction:', allTransactions[0])
+      const allTransactionData = allTransactionsResponse.data?.data || allTransactionsResponse.data || {}
+      const allTransactions = allTransactionData.transactions || allTransactionData || []
 
       // Fetch budget data
       const budgetsResponse = await budgetAPI.getBudgets(true)
-      console.log('🔍 [DashboardPage] Fetched budgets response:', budgetsResponse.data)
-      console.log('🔍 [DashboardPage] Budget data:', budgetsResponse.data.data)
-      console.log('🔍 [DashboardPage] Budget array length:', (budgetsResponse.data.data || []).length)
-      const budgets = budgetsResponse.data.data || []
+      const budgets = Array.isArray(budgetsResponse.data) ? budgetsResponse.data : []
 
       // Filter transactions for current month only
       const currentMonthTransactions = allTransactions.filter((t: Transaction) => {
@@ -100,20 +96,20 @@ export const DashboardPage: React.FC = () => {
         startDate: prevMonthStart, 
         endDate: prevMonthEnd 
       })
-      const prevAllTransactions = prevAllTransactionsResponse.data.data?.transactions || []
+      const prevAllTransactionData = prevAllTransactionsResponse.data?.data || prevAllTransactionsResponse.data || {}
+      const prevAllTransactions = prevAllTransactionData.transactions || prevAllTransactionData || []
       
       // Calculate stats
-      const totalSpent = Number(spendingData.totalExpenses) || 0
+      const totalSpent = Number(spendingData.total_expenses || spendingData.totalExpenses) || 0
       const totalIncome = currentMonthTransactions
         .filter((t: Transaction) => t.transaction_type === 'income')
         .reduce((sum: number, t: Transaction) => sum + Number(t.amount), 0)
       const totalBudget = budgets.reduce((sum: number, budget: Budget) => {
-        const budgetAmount = Number(budget.amount) || 0
+        const budgetAmount = Number(budget.budget_amount || budget.amount) || 0
         return sum + budgetAmount
       }, 0)
-      console.log('🔍 [DashboardPage] Total budget calculated:', totalBudget)
       const budgetRemaining = totalBudget - totalSpent
-      const transactionCount = Number(spendingData.totalTransactions) || 0
+      const transactionCount = Number(spendingData.transaction_count || spendingData.total_transactions || spendingData.totalTransactions) || 0
       const budgetUsage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
       
       // Calculate previous month income
@@ -125,12 +121,11 @@ export const DashboardPage: React.FC = () => {
       const incomeChange = getPercentageChange(totalIncome, prevTotalIncome)
 
       // Calculate spending change
-      const prevTotalSpent = Number(prevSpendingData.totalExpenses) || 0
+      const prevTotalSpent = Number(prevSpendingData.total_expenses || prevSpendingData.totalExpenses) || 0
       const spendingChange = getPercentageChange(totalSpent, prevTotalSpent)
 
       // Generate chart data from transactions
       const chartData = generateChartData(allTransactions)
-      console.log('🔍 [DashboardPage] Generated chart data:', chartData)
 
       const newStats = {
         totalSpent,
@@ -142,11 +137,14 @@ export const DashboardPage: React.FC = () => {
         incomeChange
       }
       
-      console.log('🔍 [DashboardPage] Setting stats:', newStats)
       setStats(newStats)
 
       setRecentTransactions(transactions.slice(0, 5))
-      setCategorySpending(categoryData.categories || [])
+      
+      // Fix category spending data access
+      const categorySpendingData = categoryData.categories || categoryData || []
+      setCategorySpending(Array.isArray(categorySpendingData) ? categorySpendingData : [])
+      
       setSpendingChartData(chartData)
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
@@ -169,23 +167,22 @@ export const DashboardPage: React.FC = () => {
   }
 
   const generateChartData = (transactions: Transaction[]) => {
-    console.log('🔍 [DashboardPage] Generating chart data from transactions:', transactions.length)
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const date = subDays(new Date(), 6 - i)
+    
+    // Generate data for the last 30 days
+    const last30Days = Array.from({ length: 30 }, (_, i) => {
+      const date = subDays(new Date(), 29 - i)
       const dateStr = format(date, 'MMM dd')
-      const targetDate = format(date, 'yyyy-MM-dd')
+      const dayStr = format(date, 'yyyy-MM-dd')
       
       const dayTransactions = transactions.filter(t => {
         const transactionDate = t.transaction_date.split('T')[0] // Get date part only
-        return transactionDate === targetDate
+        return transactionDate === dayStr
       })
       
-      console.log(`🔍 [DashboardPage] ${targetDate} (${dateStr}): ${dayTransactions.length} transactions`)
 
       const expenses = dayTransactions
         .filter(t => t.transaction_type === 'expense')
         .reduce((sum, t) => {
-          console.log(`🔍 [DashboardPage] Transaction amount: ${t.amount} (type: ${typeof t.amount})`)
           const numAmount = Number(t.amount)
           if (isNaN(numAmount)) {
             console.warn(`🔍 [DashboardPage] Invalid amount detected: ${t.amount}`)
@@ -203,14 +200,13 @@ export const DashboardPage: React.FC = () => {
         amount: expenses,
         income: income > 0 ? income : undefined
       }
-      console.log(`🔍 [DashboardPage] Chart data point for ${dateStr}:`, chartDataPoint)
       return chartDataPoint
     })
 
-    return last7Days
+    return last30Days
   }
 
-  const formatCurrencyLocal = (amount: number) => formatCurrency(amount, userCurrency)
+  const formatCurrencyLocal = (amount: number | string | undefined | null) => formatAmount(amount)
 
   if (isLoading) {
     return (
@@ -297,11 +293,14 @@ export const DashboardPage: React.FC = () => {
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SpendingChart data={spendingChartData} />
-        <CategoryChart data={categorySpending.map(cat => ({
-          name: cat.name,
-          value: cat.totalSpent,
-          color: cat.color
-        }))} />
+        <CategoryChart data={(() => {
+          const mappedData = categorySpending.map(cat => ({
+            name: cat.category_name || cat.name,
+            value: Number(cat.total_amount || cat.total_spent || cat.totalSpent || cat.value || 0),
+            color: cat.category_color || cat.color
+          }))
+          return mappedData
+        })()} />
       </div>
 
       {/* Content Grid */}

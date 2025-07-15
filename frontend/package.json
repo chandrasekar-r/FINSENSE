@@ -35,7 +35,14 @@
     "prettier": "^3.0.1",
     "tailwindcss": "^3.3.3",
     "typescript": "^5.1.6",
-    "vite": "^4.4.9"
+    "vite": "^4.4.9",
+    "vite-plugin-pwa": "^1.0.1",
+    "workbox-cacheable-response": "^7.3.0",
+    "workbox-expiration": "^7.3.0",
+    "workbox-precaching": "^7.3.0",
+    "workbox-routing": "^7.3.0",
+    "workbox-strategies": "^7.3.0",
+    "workbox-webpack-plugin": "^7.3.0"
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",

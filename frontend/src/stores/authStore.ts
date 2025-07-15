@@ -8,11 +8,14 @@ interface AuthState {
   refreshToken: string | null
   isLoading: boolean
   isAuthenticated: boolean
+  isInitialized: boolean
   login: (email: string, password: string) => Promise<void>
   register: (userData: RegisterData) => Promise<void>
   logout: () => Promise<void>
   initializeAuth: () => void
   refreshAuthToken: () => Promise<void>
+  handleAuthExpired: () => void
+  syncTokensFromStorage: () => void
 }
 
 interface RegisterData {
@@ -31,17 +34,18 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isLoading: false,
       isAuthenticated: false,
+      isInitialized: false,
 
       login: async (email: string, password: string) => {
         set({ isLoading: true })
         try {
           const response = await authAPI.login({ email, password })
-          const { data } = response.data
+          const data = response.data  // FastAPI returns data directly
           
           set({
             user: data.user,
-            token: data.token,
-            refreshToken: data.refreshToken,
+            token: data.access_token,  // Use access_token from FastAPI
+            refreshToken: data.refresh_token,  // Use refresh_token from FastAPI
             isAuthenticated: true,
             isLoading: false,
           })
@@ -56,13 +60,13 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true })
         try {
           const response = await authAPI.register(userData)
-          const { data } = response.data
+          const data = response.data  // FastAPI returns data directly
           
           set({
-            user: data.user,
-            token: data.token,
-            refreshToken: data.refreshToken,
-            isAuthenticated: true,
+            user: data,  // Register returns UserResponse directly
+            token: null,  // Register doesn't include tokens yet
+            refreshToken: null,
+            isAuthenticated: false,  // User needs to login after registration
             isLoading: false,
           })
         } catch (error: any) {
@@ -83,6 +87,7 @@ export const useAuthStore = create<AuthState>()(
             token: null,
             refreshToken: null,
             isAuthenticated: false,
+            isInitialized: false,
           })
           localStorage.removeItem('auth-storage')
         }
@@ -96,11 +101,11 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const response = await authAPI.refreshToken(refreshToken)
-          const { data } = response.data
+          const data = response.data  // FastAPI returns data directly
           
           set({
-            token: data.token,
-            refreshToken: data.refreshToken,
+            token: data.access_token,  // Use access_token from FastAPI
+            refreshToken: data.refresh_token,  // Use refresh_token from FastAPI
           })
         } catch (error) {
           // If refresh fails, logout user
@@ -112,7 +117,38 @@ export const useAuthStore = create<AuthState>()(
       initializeAuth: () => {
         const { token, refreshToken } = get()
         if (token && refreshToken) {
-          set({ isAuthenticated: true })
+          set({ isAuthenticated: true, isInitialized: true })
+        } else {
+          set({ isInitialized: true })
+        }
+      },
+
+      handleAuthExpired: () => {
+        set({
+          user: null,
+          token: null,
+          refreshToken: null,
+          isAuthenticated: false,
+          isInitialized: false,
+        })
+        localStorage.removeItem('auth-storage')
+      },
+
+      syncTokensFromStorage: () => {
+        const authData = localStorage.getItem('auth-storage')
+        if (authData) {
+          try {
+            const { state } = JSON.parse(authData)
+            if (state?.token && state?.refreshToken) {
+              set({
+                token: state.token,
+                refreshToken: state.refreshToken,
+                isAuthenticated: true
+              })
+            }
+          } catch (error) {
+            console.error('Failed to sync tokens from storage:', error)
+          }
         }
       },
     }),
