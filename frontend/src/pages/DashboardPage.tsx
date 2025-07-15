@@ -118,7 +118,7 @@ export const DashboardPage: React.FC = () => {
       }, 0)
       console.log('🔍 [DashboardPage] Total budget calculated:', totalBudget)
       const budgetRemaining = totalBudget - totalSpent
-      const transactionCount = Number(spendingData.total_transactions || spendingData.totalTransactions) || 0
+      const transactionCount = Number(spendingData.transaction_count || spendingData.total_transactions || spendingData.totalTransactions) || 0
       const budgetUsage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
       
       // Calculate previous month income
