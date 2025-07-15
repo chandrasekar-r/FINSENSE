@@ -85,6 +85,16 @@ async def get_receipt_status(
 ):
     """Get receipt processing status"""
     try:
+        # Validate UUID format
+        import uuid
+        try:
+            uuid.UUID(processing_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid processing ID format"
+            )
+            
         receipt_service = ReceiptProcessingService()
         status_data = await receipt_service.get_processing_status(current_user, processing_id)
         

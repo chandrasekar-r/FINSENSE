@@ -62,6 +62,9 @@ class ReceiptProcessingService:
 
                 # Parse receipt data with AI
                 parsed_data = await self.deepseek_service.parse_receipt_data(extracted_text)
+                
+                # Add raw OCR text to parsed_data for frontend display
+                parsed_data['raw_text'] = extracted_text
 
                 # Update progress after AI parsing
                 await self._update_processing_status_with_progress(
@@ -122,9 +125,24 @@ class ReceiptProcessingService:
     async def get_processing_status(self, user_id: str, processing_id: str) -> Optional[Dict[str, Any]]:
         """Get receipt processing status"""
         try:
-            # Convert string IDs to UUID objects
-            processing_uuid = uuid.UUID(processing_id) if isinstance(processing_id, str) else processing_id
-            user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+            # Validate UUID format before conversion
+            if isinstance(processing_id, str):
+                try:
+                    processing_uuid = uuid.UUID(processing_id)
+                except ValueError:
+                    logger.error(f"Invalid processing_id UUID format: {processing_id}")
+                    return None
+            else:
+                processing_uuid = processing_id
+                
+            if isinstance(user_id, str):
+                try:
+                    user_uuid = uuid.UUID(user_id)
+                except ValueError:
+                    logger.error(f"Invalid user_id UUID format: {user_id}")
+                    return None
+            else:
+                user_uuid = user_id
             
             # Try to select with progress columns first
             async with DatabaseManager(user_id) as db:
@@ -191,8 +209,15 @@ class ReceiptProcessingService:
     async def get_active_processing_jobs(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all active receipt processing jobs for user"""
         try:
-            # Convert string ID to UUID object
-            user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
+            # Validate and convert string ID to UUID object
+            if isinstance(user_id, str):
+                try:
+                    user_uuid = uuid.UUID(user_id)
+                except ValueError:
+                    logger.error(f"Invalid user_id UUID format in get_active_processing_jobs: {user_id}")
+                    return []
+            else:
+                user_uuid = user_id
             
             async with DatabaseManager(user_id) as db:
                 query = """
@@ -318,6 +343,9 @@ class ReceiptProcessingService:
             
             # Parse receipt data with AI
             parsed_data = await self.deepseek_service.parse_receipt_data(extracted_text)
+            
+            # Add raw OCR text to parsed_data for frontend display
+            parsed_data['raw_text'] = extracted_text
             
             # Update progress after AI parsing
             await self._update_processing_status_with_progress(

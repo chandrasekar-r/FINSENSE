@@ -190,6 +190,22 @@ class TransactionService:
                             'total_items': len(receipt_items),
                             'source': 'transaction_line_items'
                         }
+                        
+                        # Add OCR text if available from receipt_processing
+                        if result.get('extracted_data'):
+                            try:
+                                import json
+                                extracted_data = result['extracted_data']
+                                if isinstance(extracted_data, str):
+                                    parsed_data = json.loads(extracted_data)
+                                else:
+                                    parsed_data = extracted_data
+                                
+                                # Add OCR text if available
+                                if parsed_data.get('raw_text'):
+                                    result['receipt_details']['extractedText'] = parsed_data['raw_text']
+                            except (json.JSONDecodeError, Exception) as e:
+                                logger.warning(f"Failed to parse receipt extracted_data for OCR text: {e}")
                     else:
                         # Check for legacy receipt_processing data
                         if result.get('extracted_data'):
@@ -209,6 +225,10 @@ class TransactionService:
                                         'total_items': len(items_from_ocr),
                                         'source': 'receipt_processing'
                                     }
+                                    
+                                    # Add OCR text if available
+                                    if parsed_data.get('raw_text'):
+                                        result['receipt_details']['extractedText'] = parsed_data['raw_text']
                                 else:
                                     result['receipt_details'] = None
                             except (json.JSONDecodeError, Exception) as e:
